@@ -1,0 +1,12 @@
+# Core dependencies
+aiohttp>=3.8.0
+
+# Development dependencies
+pytest>=7.0.0
+pytest-asyncio>=0.21.0
+
+# Optional dependencies for enhanced functionality
+# Uncomment as needed
+# black>=22.0.0          # Code formatting
+# pylint>=2.15.0         # Linting
+# mypy>=1.0.0            # Type checking
