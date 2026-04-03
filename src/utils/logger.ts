@@ -657,6 +657,34 @@ export class RequestLogger {
 }
 
 // ============================================================================
+// LoggerFactory (singleton wrapper)
+// ============================================================================
+
+export class LoggerFactory {
+  private static instance: LoggerFactory;
+  private defaultLevel: LogLevel = 'info';
+
+  static getInstance(): LoggerFactory {
+    if (!LoggerFactory.instance) {
+      LoggerFactory.instance = new LoggerFactory();
+    }
+    return LoggerFactory.instance;
+  }
+
+  setDefaultLevel(level: LogLevel): void {
+    this.defaultLevel = level;
+  }
+
+  getDefaultLevel(): LogLevel {
+    return this.defaultLevel;
+  }
+
+  dispose(): void {
+    // cleanup
+  }
+}
+
+// ============================================================================
 // Default Export
 // ============================================================================
 

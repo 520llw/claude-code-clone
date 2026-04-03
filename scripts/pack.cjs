@@ -208,7 +208,7 @@ async function packagePlatform(platform) {
   
   // Check if binary exists, build if not
   if (!fs.existsSync(binaryDir)) {
-    const target = CONFIG.pkgConfig.targets.find(t => t.includes(platform.replace('-', '-')));
+    const target = CONFIG.pkgConfig.targets.find(t => t.includes(platform));
     if (target) {
       await buildBinary(target);
     }

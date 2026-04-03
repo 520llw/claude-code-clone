@@ -17,6 +17,7 @@ import {
   LLMConfig,
   AnthropicConfig,
   OpenAIConfig,
+  KimiConfig,
   Message,
   TextMessage,
   ToolUseMessage,
@@ -32,6 +33,7 @@ import {
   CircuitBreakerConfig,
   isAnthropicConfig,
   isOpenAIConfig,
+  isKimiConfig,
 } from '../types/index.js';
 
 import { StreamingHandler } from './StreamingHandler.js';
@@ -87,6 +89,11 @@ const ANTHROPIC_BASE_URL = 'https://api.anthropic.com/v1';
  */
 const OPENAI_BASE_URL = 'https://api.openai.com/v1';
 
+/**
+ * Kimi (Moonshot AI) API base URL
+ */
+const KIMI_BASE_URL = 'https://api.moonshot.ai/v1';
+
 // ============================================================================
 // Type Definitions
 // ============================================================================
@@ -97,7 +104,7 @@ const OPENAI_BASE_URL = 'https://api.openai.com/v1';
 export interface QueryEngineConfig {
   llmConfig: LLMConfig;
   retryConfig?: Partial<RetryConfig>;
-  circuitBreakerConfig?: Partial<CircuitBreakerBreakConfig>;
+  circuitBreakerConfig?: Partial<CircuitBreakerConfig>;
   logger?: Logger;
   timeout?: number;
   enableStreaming?: boolean;
@@ -459,6 +466,8 @@ export class QueryEngine {
 
     if (isAnthropicConfig(this.config.llmConfig)) {
       return this.executeAnthropicRequest(options, startTime);
+    } else if (isKimiConfig(this.config.llmConfig)) {
+      return this.executeKimiRequest(options, startTime);
     } else if (isOpenAIConfig(this.config.llmConfig)) {
       return this.executeOpenAIRequest(options, startTime);
     }
@@ -469,6 +478,42 @@ export class QueryEngine {
       this.config.llmConfig.provider,
       false
     );
+  }
+
+  /**
+   * Executes a Kimi (Moonshot AI) API request - OpenAI-compatible format
+   */
+  private async executeKimiRequest(
+    options: QueryOptions,
+    startTime: number
+  ): Promise<QueryResponse> {
+    const config = this.config.llmConfig as KimiConfig;
+    const url = `${config.baseUrl || KIMI_BASE_URL}/chat/completions`;
+
+    const body = this.buildOpenAIRequestBody(options);
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${config.apiKey}`,
+      },
+      body: JSON.stringify(body),
+      signal: options.abortSignal,
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new LLMError(
+        `Kimi API error: ${response.status} - ${errorText}`,
+        response.status,
+        'kimi',
+        this.isRetryableStatus(response.status)
+      );
+    }
+
+    const data = await response.json();
+    return this.parseOpenAIResponse(data, startTime);
   }
 
   /**
@@ -564,6 +609,8 @@ export class QueryEngine {
 
     if (isAnthropicConfig(this.config.llmConfig)) {
       return this.executeAnthropicStreamingRequest(options, startTime);
+    } else if (isKimiConfig(this.config.llmConfig)) {
+      return this.executeKimiStreamingRequest(options, startTime);
     } else if (isOpenAIConfig(this.config.llmConfig)) {
       return this.executeOpenAIStreamingRequest(options, startTime);
     }
@@ -574,6 +621,67 @@ export class QueryEngine {
       this.config.llmConfig.provider,
       false
     );
+  }
+
+  /**
+   * Executes a Kimi streaming request - reuses OpenAI streaming format
+   */
+  private async executeKimiStreamingRequest(
+    options: QueryOptions,
+    startTime: number
+  ): Promise<QueryResponse> {
+    const config = this.config.llmConfig as KimiConfig;
+    const url = `${config.baseUrl || KIMI_BASE_URL}/chat/completions`;
+
+    const body = this.buildOpenAIRequestBody(options);
+    body.stream = true;
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${config.apiKey}`,
+      },
+      body: JSON.stringify(body),
+      signal: options.abortSignal,
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new LLMError(
+        `Kimi API error: ${response.status} - ${errorText}`,
+        response.status,
+        'kimi',
+        this.isRetryableStatus(response.status)
+      );
+    }
+
+    if (!this.streamingHandler) {
+      throw new LLMError(
+        'StreamingHandler not initialized',
+        undefined,
+        'kimi',
+        false
+      );
+    }
+    const message = await this.streamingHandler.processStream(response);
+
+    const duration = Date.now() - startTime;
+
+    return {
+      message,
+      usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
+      toolCalls: message.type === 'tool_use' && 'toolUseId' in message && 'toolName' in message && 'toolInput' in message ? [{
+        id: (message as ToolUseMessage).toolUseId,
+        toolName: (message as ToolUseMessage).toolName,
+        parameters: (message as ToolUseMessage).toolInput,
+        timestamp: new Date(),
+      }] : [],
+      duration,
+      model: config.model,
+      finishReason: 'stop',
+      metadata: {},
+    };
   }
 
   /**
@@ -616,14 +724,22 @@ export class QueryEngine {
     }
 
     // Process stream
-    const message = await this.streamingHandler!.processStream(response);
+    if (!this.streamingHandler) {
+      throw new LLMError(
+        'StreamingHandler not initialized',
+        undefined,
+        'anthropic',
+        false
+      );
+    }
+    const message = await this.streamingHandler.processStream(response);
 
     const duration = Date.now() - startTime;
 
     return {
       message,
       usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 }, // Updated via callbacks
-      toolCalls: message.type === 'tool_use' ? [{
+      toolCalls: message.type === 'tool_use' && 'toolUseId' in message && 'toolName' in message && 'toolInput' in message ? [{
         id: (message as ToolUseMessage).toolUseId,
         toolName: (message as ToolUseMessage).toolName,
         parameters: (message as ToolUseMessage).toolInput,
@@ -674,14 +790,22 @@ export class QueryEngine {
     }
 
     // Process stream
-    const message = await this.streamingHandler!.processStream(response);
+    if (!this.streamingHandler) {
+      throw new LLMError(
+        'StreamingHandler not initialized',
+        undefined,
+        'openai',
+        false
+      );
+    }
+    const message = await this.streamingHandler.processStream(response);
 
     const duration = Date.now() - startTime;
 
     return {
       message,
       usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
-      toolCalls: message.type === 'tool_use' ? [{
+      toolCalls: message.type === 'tool_use' && 'toolUseId' in message && 'toolName' in message && 'toolInput' in message ? [{
         id: (message as ToolUseMessage).toolUseId,
         toolName: (message as ToolUseMessage).toolName,
         parameters: (message as ToolUseMessage).toolInput,
@@ -1275,6 +1399,24 @@ export function createQueryEngine(config: QueryEngineConfig): QueryEngine {
   return new QueryEngine(config);
 }
 
+/**
+ * Creates a QueryEngine for Kimi (Moonshot AI)
+ */
+export function createKimiQueryEngine(
+  apiKey: string,
+  model: string = 'kimi-k2.5',
+  options?: Partial<Omit<QueryEngineConfig, 'llmConfig'>>
+): QueryEngine {
+  return new QueryEngine({
+    llmConfig: {
+      provider: 'kimi',
+      apiKey,
+      model,
+    },
+    ...options,
+  });
+}
+
 // ============================================================================
 // Utility Functions
 // ============================================================================
@@ -1295,8 +1437,11 @@ export function estimateQueryCost(
   const pricing: Record<string, { input: number; output: number }> = {
     'claude-3-5-sonnet-20241022': { input: 3.0, output: 15.0 },
     'claude-3-opus-20240229': { input: 15.0, output: 75.0 },
+    'claude-sonnet-4-20250514': { input: 3.0, output: 15.0 },
     'gpt-4o': { input: 2.5, output: 10.0 },
     'gpt-4o-mini': { input: 0.15, output: 0.6 },
+    'kimi-k2.5': { input: 0.5, output: 2.0 },
+    'kimi-latest-8k': { input: 0.3, output: 1.0 },
   };
 
   const modelPricing = pricing[model] || { input: 3.0, output: 15.0 };

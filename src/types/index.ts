@@ -276,7 +276,7 @@ export const ToolDefinitionSchema = z.object({
   name: z.string(),
   description: z.string(),
   category: ToolCategorySchema,
-  parameters: z.instanceof(z.ZodType).or(z.record(z.unknown())),
+  parameters: z.any(),
   permissions: z.array(PermissionSchema).default([]),
   examples: z.array(z.object({
     description: z.string(),
@@ -284,6 +284,7 @@ export const ToolDefinitionSchema = z.object({
     expectedOutput: z.string(),
   })).default([]),
   isDangerous: z.boolean().default(false),
+  readOnly: z.boolean().default(false),
   requiresConfirmation: z.boolean().default(false),
 });
 
@@ -517,7 +518,7 @@ export type MCPResource = z.infer<typeof MCPResourceSchema>;
 // ============================================================================
 
 export const ModelConfigSchema = z.object({
-  provider: z.enum(['anthropic', 'openai', 'google', 'custom']),
+  provider: z.enum(['anthropic', 'openai', 'google', 'kimi', 'custom']),
   name: z.string(),
   apiKey: z.string().optional(),
   baseUrl: z.string().optional(),
@@ -672,6 +673,99 @@ export const ErrorDetailsSchema = z.object({
 export type ErrorDetails = z.infer<typeof ErrorDetailsSchema>;
 
 // ============================================================================
+// LLM Provider Types
+// ============================================================================
+
+export interface LLMConfig {
+  provider: string;
+  model: string;
+  apiKey: string;
+  baseUrl?: string;
+  maxTokens?: number;
+  temperature?: number;
+  topP?: number;
+  topK?: number;
+}
+
+export interface AnthropicConfig extends LLMConfig {
+  provider: 'anthropic';
+}
+
+export interface OpenAIConfig extends LLMConfig {
+  provider: 'openai';
+}
+
+export interface KimiConfig extends LLMConfig {
+  provider: 'kimi';
+}
+
+export function isAnthropicConfig(config: LLMConfig): config is AnthropicConfig {
+  return config.provider === 'anthropic';
+}
+
+export function isOpenAIConfig(config: LLMConfig): config is OpenAIConfig {
+  return config.provider === 'openai';
+}
+
+export function isKimiConfig(config: LLMConfig): config is KimiConfig {
+  return config.provider === 'kimi';
+}
+
+export interface TokenUsage {
+  inputTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+}
+
+export interface StreamCallbacks {
+  onToken?: (token: string) => void;
+  onContent?: (content: string) => void;
+  onToolCall?: (toolCall: ToolCall) => void;
+  onComplete?: (message: Message) => void;
+  onError?: (error: Error) => void;
+}
+
+export class LLMError extends Error {
+  constructor(
+    message: string,
+    public statusCode?: number,
+    public provider?: string,
+    public retryable: boolean = false,
+  ) {
+    super(message);
+    this.name = 'LLMError';
+  }
+}
+
+export class AgentError extends Error {
+  constructor(message: string, public code?: string) {
+    super(message);
+    this.name = 'AgentError';
+  }
+}
+
+export interface Logger {
+  debug: (...args: unknown[]) => void;
+  info: (...args: unknown[]) => void;
+  warn: (...args: unknown[]) => void;
+  error: (...args: unknown[]) => void;
+}
+
+export interface RetryConfig {
+  maxRetries: number;
+  baseDelay: number;
+  maxDelay: number;
+  backoffMultiplier: number;
+  retryableErrors: string[];
+}
+
+export interface CircuitBreakerConfig {
+  failureThreshold: number;
+  resetTimeout: number;
+  halfOpenMaxCalls: number;
+}
+
+// ============================================================================
 // Utility Types
 // ============================================================================
 
@@ -696,3 +790,21 @@ export type DeepPartial<T> = {
 // ============================================================================
 
 export type { ReactNode };
+
+// ============================================================================
+// Missing Stubs (referenced but not originally defined)
+// ============================================================================
+
+export class ToolError extends Error {
+  constructor(message: string, public toolName?: string) {
+    super(message);
+    this.name = 'ToolError';
+  }
+}
+
+export class PermissionError extends Error {
+  constructor(message: string, public toolName?: string) {
+    super(message);
+    this.name = 'PermissionError';
+  }
+}

@@ -816,7 +816,7 @@ export abstract class Command extends EventEmitter {
 
     // Related commands
     if (this.metadata.relatedCommands && this.metadata.relatedCommands.length > 0) {
-      lines.push(this.formatHeader('SEE ALSO')));
+      lines.push(this.formatHeader('SEE ALSO'));
       lines.push(`  ${this.metadata.relatedCommands.map(c => `/${c}`).join(', ')}\n`);
     }
 

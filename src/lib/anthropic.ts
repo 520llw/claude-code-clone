@@ -131,7 +131,6 @@ export class AnthropicClient {
       };
     } catch (error) {
       this.handleError(error);
-      throw error; // Re-throw after handling
     }
   }
 
@@ -231,7 +230,6 @@ export class AnthropicClient {
       };
     } catch (error) {
       this.handleError(error);
-      throw error;
     }
   }
 

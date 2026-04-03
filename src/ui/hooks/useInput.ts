@@ -5,7 +5,66 @@
 
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { useInput as useInkInput } from 'ink';
+import * as fs from 'fs';
+import * as path from 'path';
+import * as os from 'os';
 import type { InputHistoryEntry, AutocompleteSuggestion } from '../types/index.js';
+
+/**
+ * Get the file path for persistent history storage
+ */
+function getHistoryFilePath(storageKey: string): string {
+  return path.join(os.homedir(), '.claude-code', `${storageKey}.json`);
+}
+
+/**
+ * Read history from file
+ */
+function readHistoryFromFile(storageKey: string): InputHistoryEntry[] {
+  try {
+    const filePath = getHistoryFilePath(storageKey);
+    if (fs.existsSync(filePath)) {
+      const data = fs.readFileSync(filePath, 'utf-8');
+      return JSON.parse(data).map((entry: InputHistoryEntry) => ({
+        ...entry,
+        timestamp: new Date(entry.timestamp),
+      }));
+    }
+  } catch {
+    // Ignore read errors
+  }
+  return [];
+}
+
+/**
+ * Write history to file
+ */
+function writeHistoryToFile(storageKey: string, history: InputHistoryEntry[]): void {
+  try {
+    const filePath = getHistoryFilePath(storageKey);
+    const dir = path.dirname(filePath);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+    fs.writeFileSync(filePath, JSON.stringify(history), 'utf-8');
+  } catch {
+    // Ignore write errors
+  }
+}
+
+/**
+ * Remove history file
+ */
+function removeHistoryFile(storageKey: string): void {
+  try {
+    const filePath = getHistoryFilePath(storageKey);
+    if (fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath);
+    }
+  } catch {
+    // Ignore remove errors
+  }
+}
 
 /**
  * Input state interface
@@ -49,18 +108,8 @@ export function useInputHistory(options: InputHistoryOptions = {}): {
 } {
   const { maxSize = 1000, persist = false, storageKey = 'input-history' } = options;
   const [history, setHistory] = useState<InputHistoryEntry[]>(() => {
-    if (persist && typeof window !== 'undefined') {
-      try {
-        const stored = localStorage.getItem(storageKey);
-        if (stored) {
-          return JSON.parse(stored).map((entry: InputHistoryEntry) => ({
-            ...entry,
-            timestamp: new Date(entry.timestamp),
-          }));
-        }
-      } catch {
-        // Ignore storage errors
-      }
+    if (persist) {
+      return readHistoryFromFile(storageKey);
     }
     return [];
   });
@@ -84,13 +133,9 @@ export function useInputHistory(options: InputHistoryOptions = {}): {
       }
       
       const newHistory = [newEntry, ...prev].slice(0, maxSize);
-      
-      if (persist && typeof window !== 'undefined') {
-        try {
-          localStorage.setItem(storageKey, JSON.stringify(newHistory));
-        } catch {
-          // Ignore storage errors
-        }
+
+      if (persist) {
+        writeHistoryToFile(storageKey, newHistory);
       }
       
       return newHistory;
@@ -102,12 +147,8 @@ export function useInputHistory(options: InputHistoryOptions = {}): {
    */
   const clearHistory = useCallback(() => {
     setHistory([]);
-    if (persist && typeof window !== 'undefined') {
-      try {
-        localStorage.removeItem(storageKey);
-      } catch {
-        // Ignore storage errors
-      }
+    if (persist) {
+      removeHistoryFile(storageKey);
     }
   }, [persist, storageKey]);
   

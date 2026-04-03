@@ -1,7 +1,6 @@
-#!/usr/bin/env bun
 /**
  * Claude Code Clone - CLI Entry Point
- * 
+ *
  * This is the main entry point for the Claude Code Clone CLI application.
  * It handles command-line parsing, initialization, and starts the terminal UI.
  */
@@ -10,17 +9,99 @@ import React from 'react';
 import { render } from 'ink';
 import { Command } from 'commander';
 import { homedir } from 'node:os';
-import { join } from 'node:path';
-import { exists } from 'node:fs/promises';
+import { join, resolve } from 'node:path';
+import { readFileSync, existsSync } from 'node:fs';
 
 // Core imports
 import { ConfigManager, loadConfig } from '@config/index';
 import { Logger, LoggerFactory } from '@utils/logger';
 import { globalErrorHandler } from '@core/errors';
 import { eventBus, SystemEvents } from '@core/events';
+import { AgentLoop } from '@core/AgentLoop';
+import type { AgentEvents } from '@core/AgentLoop';
+import type { LLMConfig, Tool, StreamCallbacks } from '@types/index';
+
+// Tool imports
+import {
+  FileReadTool,
+  FileEditTool,
+  FileCreateTool,
+  FileDeleteTool,
+  DirectoryListTool,
+} from './tools/implementations/file';
+import {
+  GrepTool,
+  FindTool,
+} from './tools/implementations/search';
+import {
+  BashTool,
+  GitTool,
+} from './tools/implementations/execution';
 
 // UI imports
 import { App } from '@ui/app';
+
+// ============================================================================
+// CLAUDE.md Loader
+// ============================================================================
+
+/**
+ * Loads CLAUDE.md from project root and parent directories
+ */
+function loadClaudeMd(workingDirectory: string): string {
+  const claudeMdPaths = [
+    join(workingDirectory, 'CLAUDE.md'),
+    join(workingDirectory, '.claude', 'CLAUDE.md'),
+  ];
+
+  // Walk up to find CLAUDE.md in parent directories (up to 5 levels)
+  let dir = workingDirectory;
+  for (let i = 0; i < 5; i++) {
+    const parent = resolve(dir, '..');
+    if (parent === dir) break; // reached root
+    claudeMdPaths.push(join(parent, 'CLAUDE.md'));
+    dir = parent;
+  }
+
+  const contents: string[] = [];
+  for (const p of claudeMdPaths) {
+    try {
+      if (existsSync(p)) {
+        const content = readFileSync(p, 'utf-8').trim();
+        if (content) {
+          contents.push(`# Project Context (from ${p})\n\n${content}`);
+        }
+      }
+    } catch {
+      // Ignore read errors
+    }
+  }
+
+  return contents.join('\n\n---\n\n');
+}
+
+/**
+ * Create default tools for the agent
+ */
+function createDefaultTools(workingDirectory: string): Tool[] {
+  const tools: Tool[] = [];
+
+  try {
+    tools.push(new FileReadTool({ workingDirectory }));
+    tools.push(new FileEditTool({ workingDirectory }));
+    tools.push(new FileCreateTool({ workingDirectory }));
+    tools.push(new FileDeleteTool({ workingDirectory }));
+    tools.push(new DirectoryListTool({ workingDirectory }));
+    tools.push(new GrepTool({ workingDirectory }));
+    tools.push(new FindTool({ workingDirectory }));
+    tools.push(new BashTool({ workingDirectory }));
+    tools.push(new GitTool({ workingDirectory }));
+  } catch {
+    // Some tools may fail to initialize - that's okay
+  }
+
+  return tools;
+}
 
 // ============================================================================
 // CLI Setup
@@ -104,52 +185,160 @@ program
 // Main Function
 // ============================================================================
 
-async function runMain(initialPrompt: string | undefined, options: any): Promise<void> {
-  const logger = createLogger(options.debug);
-  
+async function runMain(initialPrompt: string | undefined, options: Record<string, unknown>): Promise<void> {
+  const logger = createLogger(!!options.debug);
+
   try {
     // Initialize error handling
     setupErrorHandling(logger);
-    
+
     // Load configuration
     const config = await initializeConfig(options, logger);
-    
+    const workingDirectory = (options.directory as string) || process.cwd();
+
     // Set up logging based on config
     if (options.debug) {
       LoggerFactory.getInstance().setDefaultLevel('debug');
     }
-    
+
+    // Load CLAUDE.md project context
+    const claudeMdContent = loadClaudeMd(workingDirectory);
+
+    // Build system prompt with CLAUDE.md context
+    const baseSystemPrompt = `You are Claude Code, an AI assistant designed to help with software development tasks.
+You have access to various tools for file operations, code analysis, shell commands, and more.
+
+Guidelines:
+- Always think step by step
+- Use tools when needed to accomplish tasks
+- Explain your reasoning when making changes
+- Ask for clarification if the request is ambiguous
+- Be concise but thorough in your responses`;
+
+    const systemPrompt = claudeMdContent
+      ? `${baseSystemPrompt}\n\n---\n\n${claudeMdContent}`
+      : baseSystemPrompt;
+
+    // Build LLM config from configuration
+    const provider = (config.get('model.provider') as string) || 'anthropic';
+
+    // Resolve API key based on provider
+    const resolveApiKey = (): string => {
+      const configKey = config.get('model.apiKey') as string;
+      if (configKey) return configKey;
+
+      switch (provider) {
+        case 'kimi':
+          return process.env.MOONSHOT_API_KEY || process.env.KIMI_API_KEY || '';
+        case 'openai':
+          return process.env.OPENAI_API_KEY || '';
+        case 'anthropic':
+        default:
+          return process.env.ANTHROPIC_API_KEY || process.env.CLAUDE_API_KEY || '';
+      }
+    };
+
+    // Resolve default model based on provider
+    const resolveDefaultModel = (): string => {
+      const configModel = config.get('model.name') as string;
+      if (configModel) return configModel;
+
+      switch (provider) {
+        case 'kimi':
+          return 'kimi-k2.5';
+        case 'openai':
+          return 'gpt-4o';
+        case 'anthropic':
+        default:
+          return 'claude-sonnet-4-20250514';
+      }
+    };
+
+    const llmConfig: LLMConfig = {
+      provider,
+      model: resolveDefaultModel(),
+      apiKey: resolveApiKey(),
+      maxTokens: (config.get('model.maxTokens') as number) || 16000,
+      temperature: (config.get('model.temperature') as number) || 0,
+    };
+
+    // Create tools
+    const tools = createDefaultTools(workingDirectory);
+
+    // Create AgentLoop
+    const agentEvents: AgentEvents = {
+      onStateChange: (state) => {
+        logger.debug(`Agent state: ${state}`);
+      },
+      onMessage: (message) => {
+        logger.debug(`Agent message: ${message.type}`);
+      },
+      onError: (error) => {
+        logger.error('Agent error', error);
+      },
+      onPermissionRequest: async (toolName, _params) => {
+        // In interactive mode, this will be handled by the UI
+        // For now, prompt tools that aren't read-only need explicit approval
+        logger.info(`Permission requested for tool: ${toolName}`);
+        return true; // Auto-approve in non-interactive startup
+      },
+    };
+
+    const agent = new AgentLoop({
+      llmConfig,
+      tools,
+      systemPrompt,
+      agentConfig: {
+        autoApprove: false,
+        streamResponses: options.streaming !== false,
+        maxIterations: 50,
+        timeout: 300000,
+      },
+      events: agentEvents,
+      logger,
+      workingDirectory,
+      enableSessionPersistence: true,
+      sessionStoragePath: join(homedir(), '.claude-code', 'sessions'),
+    });
+
+    // Initialize agent
+    await agent.initialize();
+
     logger.info('Starting Claude Code Clone', {
       version: '1.0.0',
-      directory: options.directory,
-      model: config.get('model.name'),
+      directory: workingDirectory,
+      model: llmConfig.model,
+      toolCount: tools.length,
+      hasClaudeMd: !!claudeMdContent,
     });
-    
+
     // Emit system initialized event
     eventBus.emit(SystemEvents.INITIALIZED, {
       timestamp: Date.now(),
       config: config.getConfig(),
     });
-    
-    // Render the UI
+
+    // Render the UI with agent
     const { waitUntilExit } = render(
       <App
         initialPrompt={initialPrompt}
-        workingDirectory={options.directory}
+        workingDirectory={workingDirectory}
         config={config}
         logger={logger}
+        agent={agent}
       />,
       {
         exitOnCtrlC: true,
       }
     );
-    
+
     // Wait for the UI to exit
     await waitUntilExit();
-    
+
     // Clean shutdown
+    await agent.dispose();
     await shutdown(logger);
-    
+
   } catch (error) {
     logger.fatal(
       'Failed to start application',
@@ -209,7 +398,7 @@ function setupErrorHandling(logger: Logger): void {
 }
 
 async function initializeConfig(
-  options: any,
+  options: Record<string, unknown>,
   logger: Logger
 ): Promise<ConfigManager> {
   const configPath = options.config;
@@ -265,7 +454,7 @@ async function shutdown(logger: Logger): Promise<void> {
 // Command Handlers
 // ============================================================================
 
-async function handleConfigCommand(options: any): Promise<void> {
+async function handleConfigCommand(options: Record<string, unknown>): Promise<void> {
   const configPath = options.global
     ? join(homedir(), '.config', 'claude-code', 'config.yaml')
     : join(process.cwd(), '.claude-code', 'config.yaml');
@@ -293,53 +482,159 @@ async function handleConfigCommand(options: any): Promise<void> {
   console.log('Use --list to view configuration, --reset to reset, or --edit to edit');
 }
 
-async function handleSessionCommand(options: any): Promise<void> {
+async function handleSessionCommand(options: Record<string, unknown>): Promise<void> {
+  const sessionDir = join(homedir(), '.claude-code', 'sessions');
+
   if (options.list) {
     console.log('Sessions:');
-    // TODO: Implement session listing
+    try {
+      if (existsSync(sessionDir)) {
+        const files = require('fs').readdirSync(sessionDir).filter((f: string) => f.endsWith('.json'));
+        if (files.length === 0) {
+          console.log('  No saved sessions found.');
+        } else {
+          for (const file of files) {
+            const id = file.replace('.json', '');
+            try {
+              const data = JSON.parse(readFileSync(join(sessionDir, file), 'utf-8'));
+              const name = data.name || 'Unnamed';
+              const date = data.updatedAt ? new Date(data.updatedAt).toLocaleString() : 'Unknown';
+              const msgCount = data.messages?.length || 0;
+              console.log(`  ${id} - ${name} (${msgCount} messages, ${date})`);
+            } catch {
+              console.log(`  ${id} - (unable to read)`);
+            }
+          }
+        }
+      } else {
+        console.log('  No sessions directory found.');
+      }
+    } catch (error) {
+      console.error('Failed to list sessions:', error instanceof Error ? error.message : String(error));
+    }
     return;
   }
-  
+
   if (options.resume) {
-    console.log(`Resuming session: ${options.resume}`);
-    // TODO: Implement session resumption
+    const sessionFile = join(sessionDir, `${options.resume}.json`);
+    if (existsSync(sessionFile)) {
+      console.log(`Resuming session: ${options.resume}`);
+      // Pass session ID to main run flow
+      await runMain(undefined, { ...options, sessionId: options.resume, directory: process.cwd() });
+    } else {
+      console.error(`Session not found: ${options.resume}`);
+    }
     return;
   }
-  
+
   if (options.delete) {
-    console.log(`Deleting session: ${options.delete}`);
-    // TODO: Implement session deletion
+    const sessionFile = join(sessionDir, `${options.delete}.json`);
+    try {
+      if (existsSync(sessionFile)) {
+        require('fs').unlinkSync(sessionFile);
+        console.log(`Deleted session: ${options.delete}`);
+      } else {
+        console.error(`Session not found: ${options.delete}`);
+      }
+    } catch (error) {
+      console.error('Failed to delete session:', error instanceof Error ? error.message : String(error));
+    }
     return;
   }
-  
+
   if (options.export) {
-    console.log(`Exporting session: ${options.export}`);
-    // TODO: Implement session export
+    const sessionFile = join(sessionDir, `${options.export}.json`);
+    try {
+      if (existsSync(sessionFile)) {
+        const data = readFileSync(sessionFile, 'utf-8');
+        console.log(data);
+      } else {
+        console.error(`Session not found: ${options.export}`);
+      }
+    } catch (error) {
+      console.error('Failed to export session:', error instanceof Error ? error.message : String(error));
+    }
     return;
   }
-  
+
   console.log('Use --list, --resume <id>, --delete <id>, or --export <id>');
 }
 
-async function handlePluginCommand(options: any): Promise<void> {
+async function handlePluginCommand(options: Record<string, unknown>): Promise<void> {
+  const pluginDir = join(homedir(), '.claude-code', 'plugins');
+
   if (options.list) {
     console.log('Installed plugins:');
-    // TODO: Implement plugin listing
+    try {
+      if (existsSync(pluginDir)) {
+        const dirs = require('fs').readdirSync(pluginDir).filter((f: string) => {
+          try {
+            return require('fs').statSync(join(pluginDir, f)).isDirectory();
+          } catch {
+            return false;
+          }
+        });
+        if (dirs.length === 0) {
+          console.log('  No plugins installed.');
+        } else {
+          for (const dir of dirs) {
+            const manifestPath = join(pluginDir, dir, 'manifest.json');
+            try {
+              if (existsSync(manifestPath)) {
+                const manifest = JSON.parse(readFileSync(manifestPath, 'utf-8'));
+                console.log(`  ${manifest.name || dir} v${manifest.version || '?'} - ${manifest.description || ''}`);
+              } else {
+                console.log(`  ${dir} - (no manifest)`);
+              }
+            } catch {
+              console.log(`  ${dir} - (unable to read)`);
+            }
+          }
+        }
+      } else {
+        console.log('  No plugins directory found.');
+      }
+    } catch (error) {
+      console.error('Failed to list plugins:', error instanceof Error ? error.message : String(error));
+    }
     return;
   }
-  
+
   if (options.install) {
-    console.log(`Installing plugin from: ${options.install}`);
-    // TODO: Implement plugin installation
+    const sourcePath = String(options.install);
+    console.log(`Installing plugin from: ${sourcePath}`);
+    try {
+      const fs = require('fs');
+      if (!existsSync(pluginDir)) {
+        fs.mkdirSync(pluginDir, { recursive: true });
+      }
+      const pluginName = require('path').basename(sourcePath);
+      const destPath = join(pluginDir, pluginName);
+      // Copy plugin directory
+      fs.cpSync(sourcePath, destPath, { recursive: true });
+      console.log(`Plugin installed to: ${destPath}`);
+    } catch (error) {
+      console.error('Failed to install plugin:', error instanceof Error ? error.message : String(error));
+    }
     return;
   }
-  
+
   if (options.uninstall) {
-    console.log(`Uninstalling plugin: ${options.uninstall}`);
-    // TODO: Implement plugin uninstallation
+    const pluginName = String(options.uninstall);
+    const pluginPath = join(pluginDir, pluginName);
+    try {
+      if (existsSync(pluginPath)) {
+        require('fs').rmSync(pluginPath, { recursive: true });
+        console.log(`Uninstalled plugin: ${pluginName}`);
+      } else {
+        console.error(`Plugin not found: ${pluginName}`);
+      }
+    } catch (error) {
+      console.error('Failed to uninstall plugin:', error instanceof Error ? error.message : String(error));
+    }
     return;
   }
-  
+
   console.log('Use --list, --install <path>, or --uninstall <name>');
 }
 

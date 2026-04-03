@@ -57,7 +57,7 @@ jest.mock('fs', () => ({
   readdirSync: jest.fn((path: string) => {
     return global.mockFS.readdirSync(path);
   }),
-  mkdirSync: jest.fn((path: string, options?: any) => {
+  mkdirSync: jest.fn((path: string, options?: { recursive?: boolean }) => {
     return global.mockFS.mkdirSync(path, options);
   }),
   unlinkSync: jest.fn((path: string) => {

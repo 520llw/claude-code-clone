@@ -98,7 +98,7 @@ export interface ConfigSchemaEntry {
   /** Configuration description */
   description?: string;
   /** Default value */
-  default?: any;
+  default?: unknown;
   /** Whether configuration is required */
   required?: boolean;
   /** For enum type: allowed values */
@@ -125,7 +125,7 @@ export interface ConfigSchemaEntry {
  * Plugin configuration object
  */
 export interface PluginConfig {
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
 /**
@@ -179,7 +179,7 @@ export interface PluginContext {
   /** Host application version */
   hostVersion: string;
   /** Host application API */
-  api: any;
+  api: Record<string, unknown>;
   /** Logger instance */
   logger: PluginLogger;
   /** Storage interface */
@@ -200,11 +200,11 @@ export interface PluginContext {
  * Plugin logger interface
  */
 export interface PluginLogger {
-  debug(message: string, ...args: any[]): void;
-  info(message: string, ...args: any[]): void;
-  warn(message: string, ...args: any[]): void;
-  error(message: string, ...args: any[]): void;
-  trace(message: string, ...args: any[]): void;
+  debug(message: string, ...args: unknown[]): void;
+  info(message: string, ...args: unknown[]): void;
+  warn(message: string, ...args: unknown[]): void;
+  error(message: string, ...args: unknown[]): void;
+  trace(message: string, ...args: unknown[]): void;
 }
 
 /**
@@ -1185,7 +1185,7 @@ export abstract class Plugin extends EventEmitter {
    * @param data - The event data
    * @returns True if the event had listeners
    */
-  public emitPluginEvent(event: string, data?: any): boolean {
+  public emitPluginEvent(event: string, data?: unknown): boolean {
     return this.emit(event, data);
   }
 
@@ -1234,7 +1234,7 @@ export type PluginConstructor = new () => Plugin;
  * @param value - The value to check
  * @returns True if the value is a Plugin constructor
  */
-export function isPluginConstructor(value: any): value is PluginConstructor {
+export function isPluginConstructor(value: unknown): value is PluginConstructor {
   return typeof value === 'function' && value.prototype instanceof Plugin;
 }
 

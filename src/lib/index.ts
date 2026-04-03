@@ -12,8 +12,3 @@ export {
   type ChatCompletionOptions,
   type ChatCompletionResult,
 } from './anthropic';
-
-// Placeholder for future library wrappers:
-// - git.ts
-// - fs.ts
-// - cache.ts

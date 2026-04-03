@@ -1,6 +1,6 @@
 /**
  * Session Module
- * 
+ *
  * This module exports all session-related classes and interfaces.
  */
 
@@ -14,9 +14,6 @@ export type {
 // Re-export from core
 export type { ISessionManager } from '@core/interfaces';
 
-// Placeholder for future session implementations
-// These will be implemented in separate files:
-// - manager.ts
-// - persistence.ts
-// - state.ts
-// - recovery.ts
+// Actual implementations
+export { SessionManager } from '@core/SessionManager';
+export type { SessionManagerConfig } from '@core/SessionManager';

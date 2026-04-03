@@ -26,8 +26,11 @@ export const FilePathSchema = z.string()
     'File path cannot contain null characters'
   )
   .refine(
-    (path) => !path.includes('..') || path.startsWith('/'),
-    'Relative path traversal not allowed'
+    (path) => {
+      const normalized = path.replace(/\\/g, '/');
+      return !normalized.split('/').includes('..');
+    },
+    'Path traversal (..) not allowed'
   )
   .describe('Absolute or relative file path');
 

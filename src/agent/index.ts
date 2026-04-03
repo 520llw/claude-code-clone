@@ -1,6 +1,6 @@
 /**
  * Agent Module
- * 
+ *
  * This module exports all agent-related classes and interfaces.
  */
 
@@ -21,10 +21,11 @@ export type {
 // Re-export from core
 export { BaseAgent } from '@core/base-classes';
 export type { IAgent, IAgentOrchestrator } from '@core/interfaces';
+export { AgentLoop } from '@core/AgentLoop';
+export type { AgentEvents, AgentOptions } from '@core/AgentLoop';
 
-// Placeholder for future agent implementations
-// These will be implemented in separate files:
-// - parent-agent.ts
-// - sub-agent.ts
-// - orchestrator.ts
-// - registry.ts
+// Sub-agent system
+export { SubAgent } from './sub-agent';
+export type { SubAgentOptions } from './sub-agent';
+export { AgentOrchestrator } from './orchestrator';
+export type { OrchestratorConfig } from './orchestrator';

@@ -545,7 +545,7 @@ export class PermissionManager {
       }
 
       if (rule.conditions.dangerous !== undefined && toolDefinition) {
-        if (rule.conditions.dangerous !== toolDefinition.dangerous) {
+        if (rule.conditions.dangerous !== toolDefinition.isDangerous) {
           return false;
         }
       }
@@ -605,6 +605,8 @@ export class PermissionManager {
         toolName: request?.toolName,
         granted: decision?.granted,
         ...metadata,
+      }).catch(() => {
+        // Silently ignore audit log write failures
       });
     }
   }
@@ -681,12 +683,12 @@ export function isReadOnlyOperation(toolDefinition: ToolDefinition): boolean {
 
 /**
  * Quick permission check for dangerous operations
- * 
+ *
  * @param toolDefinition - Tool definition
  * @returns True if dangerous
  */
 export function isDangerousOperation(toolDefinition: ToolDefinition): boolean {
-  return toolDefinition.dangerous === true;
+  return toolDefinition.isDangerous === true;
 }
 
 export default PermissionManager;

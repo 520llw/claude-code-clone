@@ -38,10 +38,10 @@ services:
       - .:/workspace:rw
       # Persist configuration
       - claude-config:/home/claude/.config/claude-code-clone
-      # Mount SSH keys (optional)
-      - ~/.ssh:/home/claude/.ssh:ro
+      # Mount SSH keys (optional, uses HOME env var)
+      - ${HOME}/.ssh:/home/claude/.ssh:ro
       # Mount Git configuration (optional)
-      - ~/.gitconfig:/home/claude/.gitconfig:ro
+      - ${HOME}/.gitconfig:/home/claude/.gitconfig:ro
     
     # Working directory
     working_dir: /workspace

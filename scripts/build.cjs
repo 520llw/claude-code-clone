@@ -91,29 +91,25 @@ async function buildTypeScript() {
   const buildOptions = {
     entryPoints: [
       path.join(CONFIG.srcDir, 'index.ts'),
-      path.join(CONFIG.srcDir, 'cli.ts')
+      path.join(CONFIG.srcDir, 'cli.tsx')
     ],
     bundle: true,
     platform: 'node',
     target: 'node18',
     outdir: CONFIG.outDir,
-    format: 'cjs',
+    format: 'esm',
     sourcemap: !CONFIG.isProduction,
     minify: CONFIG.isProduction,
     splitting: false,
-    external: [
-      // Native modules that shouldn't be bundled
-      'fsevents',
-      '@anthropic-ai/sdk',
-      'esbuild'
-    ],
+    outExtension: { '.js': '.mjs' },
+    jsx: 'automatic',
+    packages: 'external',
     define: {
       'process.env.NODE_ENV': JSON.stringify(CONFIG.isProduction ? 'production' : 'development'),
       'process.env.PACKAGE_VERSION': JSON.stringify(require('../package.json').version)
     },
     banner: {
-      js: `#!/usr/bin/env node
-/**
+      js: `/**
  * Claude Code Clone v${require('../package.json').version}
  * Built: ${new Date().toISOString()}
  * Environment: ${CONFIG.isProduction ? 'production' : 'development'}
@@ -267,15 +263,25 @@ async function main() {
   log(`Environment: ${CONFIG.isProduction ? 'production' : 'development'}`, 'info');
   log(`Output directory: ${CONFIG.outDir}`, 'info');
 
+  const args = process.argv.slice(2);
+  const skipTypecheck = args.includes('--skip-typecheck');
+  const skipValidate = args.includes('--skip-validate');
+
   try {
     await clean();
-    await typeCheck();
+    if (!skipTypecheck) {
+      await typeCheck();
+    } else {
+      log('Skipping type check (--skip-typecheck)', 'warn');
+    }
     await buildTypeScript();
     await copyAssets();
     await generateTypes();
     await makeExecutable();
     await createPackageJson();
-    await validateBuild();
+    if (!skipValidate) {
+      await validateBuild();
+    }
     await generateChecksums();
 
     const duration = ((Date.now() - startTime) / 1000).toFixed(2);

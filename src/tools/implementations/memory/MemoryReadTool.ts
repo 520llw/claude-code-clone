@@ -130,7 +130,7 @@ With default:
 
   private createSuccessResult(startedAt: Date, data: MemoryReadOutput, output: string): ToolResult {
     return {
-      executionId: this.id,
+      executionId: `${this.name}_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`,
       status: ToolExecutionStatus.SUCCESS,
       toolName: this.name,
       startedAt,
@@ -144,7 +144,7 @@ With default:
 
   private createErrorResult(startedAt: Date, error: ReturnType<typeof createToolError>): ToolResult {
     return {
-      executionId: this.id,
+      executionId: `${this.name}_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`,
       status: ToolExecutionStatus.FAILURE,
       toolName: this.name,
       startedAt,

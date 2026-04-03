@@ -14,13 +14,10 @@ export type {
   PermissionLevel,
 } from '@types/index';
 
-// Re-export from core
-export { BaseTool } from '@core/base-classes';
-export type { ITool, IToolRegistry } from '@core/interfaces';
+// Re-export tool classes
+export { Tool } from './Tool';
+export { ToolRegistry } from './ToolRegistry';
+export { ToolExecutor } from './ToolExecutor';
 
-// Placeholder for future tool implementations
-// These will be implemented in separate files:
-// - registry.ts
-// - permissions.ts
-// - validators.ts
-// - definitions/*.ts (filesystem.ts, search.ts, bash.ts, edit.ts, etc.)
+// Tool implementations
+export * from './implementations';

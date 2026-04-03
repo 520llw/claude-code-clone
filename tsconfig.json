@@ -3,6 +3,7 @@
     "target": "ES2022",
     "module": "ESNext",
     "moduleResolution": "bundler",
+    "jsx": "react-jsx",
     "lib": ["ES2022"],
     "outDir": "./dist",
     "rootDir": "./src",
@@ -32,7 +33,17 @@
     "exactOptionalPropertyTypes": true,
     "isolatedModules": true,
     "allowImportingTsExtensions": false,
-    "verbatimModuleSyntax": true
+    "verbatimModuleSyntax": true,
+    "baseUrl": "./src",
+    "paths": {
+      "@types/*": ["types/*"],
+      "@types": ["types/index"],
+      "@types/index": ["types/index"],
+      "@core/*": ["core/*"],
+      "@config/*": ["config/*"],
+      "@utils/*": ["utils/*"],
+      "@ui/*": ["ui/*"]
+    }
   },
   "include": [
     "src/**/*"

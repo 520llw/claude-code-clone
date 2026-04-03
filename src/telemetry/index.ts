@@ -1,6 +1,6 @@
 /**
  * Telemetry Module
- * 
+ *
  * This module exports all telemetry-related classes and interfaces.
  */
 
@@ -14,9 +14,11 @@ export type {
 // Re-export from core
 export type { ITelemetryService } from '@core/interfaces';
 
-// Placeholder for future telemetry implementations
-// These will be implemented in separate files:
-// - service.ts
-// - events.ts
-// - metrics.ts
-// - exporters.ts
+// Actual implementations
+export { TelemetryClient } from './TelemetryClient';
+export type {
+  TelemetryConfig as TelemetryClientConfig,
+  TelemetryContext,
+} from './TelemetryClient';
+export { Analytics } from './Analytics';
+export { ErrorReporter } from './ErrorReporter';

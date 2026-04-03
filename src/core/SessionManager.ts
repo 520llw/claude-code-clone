@@ -97,7 +97,7 @@ export class SessionManager {
   private config: Required<SessionManagerConfig>;
   private events: SessionManagerEvents;
   private logger: Logger;
-  private saveTimer: Timer | null;
+  private saveTimer: ReturnType<typeof setInterval> | null;
   private isInitialized: boolean;
 
   /**
@@ -724,21 +724,28 @@ export class SessionManager {
    * @returns Token usage
    */
   private calculateTokenUsage(session: Session): TokenUsage {
-    // This is a simplified calculation
-    // In production, you'd want to track actual token usage
-    const totalChars = session.messages.reduce((sum, m) => {
-      if ('content' in m && typeof m.content === 'string') {
-        return sum + m.content.length;
-      }
-      return sum;
-    }, 0);
+    let inputChars = 0;
+    let outputChars = 0;
 
-    const estimatedTokens = Math.ceil(totalChars / 4);
+    for (const m of session.messages) {
+      if ('content' in m && typeof m.content === 'string') {
+        if ('role' in m && m.role === 'assistant') {
+          outputChars += m.content.length;
+        } else {
+          inputChars += m.content.length;
+        }
+      }
+    }
+
+    const inputTokens = Math.ceil(inputChars / 4);
+    const outputTokens = Math.ceil(outputChars / 4);
 
     return {
-      inputTokens: Math.floor(estimatedTokens * 0.7),
-      outputTokens: Math.floor(estimatedTokens * 0.3),
-      totalTokens: estimatedTokens,
+      inputTokens,
+      outputTokens,
+      totalTokens: inputTokens + outputTokens,
+      cacheReadTokens: 0,
+      cacheWriteTokens: 0,
     };
   }
 }

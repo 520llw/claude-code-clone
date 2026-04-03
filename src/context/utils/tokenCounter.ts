@@ -37,6 +37,11 @@ export const CLAUSE_OVERHEAD = {
   toolResult: 8,
 };
 
+// Default budget constants
+export const DEFAULT_MAX_TOKENS = 200000;
+export const DEFAULT_RESERVE_TOKENS = 8192;
+export const DEFAULT_BUFFER_TOKENS = 1024;
+
 // Model-specific token limits
 export const MODEL_TOKEN_LIMITS: Record<string, number> = {
   'claude-3-opus': 200000,

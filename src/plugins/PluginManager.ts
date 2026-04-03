@@ -1433,22 +1433,46 @@ export class PluginManager extends EventEmitter {
    * @param pluginId - The plugin ID
    * @returns Network interface
    */
-  private createPluginNetwork(pluginId: string): any {
-    // Implementation would provide restricted network access
+  private createPluginNetwork(pluginId: string): Record<string, unknown> {
+    const allowedDomains: string[] = [];
+
+    const validateUrl = (url: string): boolean => {
+      try {
+        const parsed = new URL(url);
+        if (allowedDomains.length > 0) {
+          return allowedDomains.some(d => parsed.hostname === d || parsed.hostname.endsWith(`.${d}`));
+        }
+        return true; // If no domain restrictions, allow all
+      } catch {
+        return false;
+      }
+    };
+
     return {
-      request: async (options: any) => {
-        this.logger.warn(`Network request from ${pluginId}:`, options);
-        throw new Error('Network access not implemented');
+      fetch: async (url: string, options?: RequestInit) => {
+        if (!validateUrl(url)) {
+          throw new Error(`Network access denied for domain: ${url}`);
+        }
+        this.logger.info(`[Plugin ${pluginId}] fetch: ${url}`);
+        return fetch(url, { ...options, signal: AbortSignal.timeout(30000) });
       },
-      fetch: async (url: string, options?: any) => {
-        this.logger.warn(`Fetch from ${pluginId}: ${url}`);
-        throw new Error('Network access not implemented');
+      request: async (options: { url: string; method?: string; headers?: Record<string, string>; body?: string }) => {
+        if (!validateUrl(options.url)) {
+          throw new Error(`Network access denied for domain: ${options.url}`);
+        }
+        this.logger.info(`[Plugin ${pluginId}] request: ${options.method || 'GET'} ${options.url}`);
+        const resp = await fetch(options.url, {
+          method: options.method || 'GET',
+          headers: options.headers,
+          body: options.body,
+          signal: AbortSignal.timeout(30000),
+        });
+        return { status: resp.status, headers: Object.fromEntries(resp.headers), body: await resp.text() };
       },
-      websocket: async (url: string, options?: any) => {
-        this.logger.warn(`WebSocket from ${pluginId}: ${url}`);
-        throw new Error('Network access not implemented');
+      websocket: async (_url: string) => {
+        throw new Error(`WebSocket access not available for plugins`);
       },
-      getAllowedDomains: () => []
+      getAllowedDomains: () => [...allowedDomains],
     };
   }
 
@@ -1458,38 +1482,83 @@ export class PluginManager extends EventEmitter {
    * @param pluginId - The plugin ID
    * @returns File system interface
    */
-  private createPluginFileSystem(pluginId: string): any {
-    // Implementation would provide restricted file system access
+  private createPluginFileSystem(pluginId: string): Record<string, unknown> {
+    const fs = require('fs');
+    const fsPromises = require('fs/promises');
+    const pathModule = require('path');
+    const os = require('os');
+
+    // Plugins can only access their own data directory
+    const pluginDataDir = pathModule.join(os.homedir(), '.claude-code', 'plugins', pluginId, 'data');
+
+    const resolveSafePath = (inputPath: string): string => {
+      const resolved = pathModule.resolve(pluginDataDir, inputPath);
+      if (!resolved.startsWith(pluginDataDir)) {
+        throw new Error(`File access denied: path escapes plugin sandbox`);
+      }
+      return resolved;
+    };
+
+    // Ensure plugin data directory exists
+    try {
+      fs.mkdirSync(pluginDataDir, { recursive: true });
+    } catch {
+      // Ignore
+    }
+
     return {
-      readFile: async (path: string, encoding?: BufferEncoding) => {
-        this.logger.warn(`File read from ${pluginId}: ${path}`);
-        throw new Error('File system access not implemented');
+      readFile: async (filePath: string, encoding?: BufferEncoding) => {
+        const safePath = resolveSafePath(filePath);
+        this.logger.info(`[Plugin ${pluginId}] readFile: ${safePath}`);
+        return fsPromises.readFile(safePath, encoding || 'utf-8');
       },
-      writeFile: async (path: string, data: any, encoding?: BufferEncoding) => {
-        this.logger.warn(`File write from ${pluginId}: ${path}`);
-        throw new Error('File system access not implemented');
+      writeFile: async (filePath: string, data: string | Buffer, encoding?: BufferEncoding) => {
+        const safePath = resolveSafePath(filePath);
+        this.logger.info(`[Plugin ${pluginId}] writeFile: ${safePath}`);
+        const dir = pathModule.dirname(safePath);
+        await fsPromises.mkdir(dir, { recursive: true });
+        return fsPromises.writeFile(safePath, data, encoding || 'utf-8');
       },
-      exists: async (path: string) => false,
-      stat: async (path: string) => {
-        throw new Error('File system access not implemented');
+      exists: async (filePath: string) => {
+        try {
+          const safePath = resolveSafePath(filePath);
+          await fsPromises.access(safePath);
+          return true;
+        } catch {
+          return false;
+        }
       },
-      mkdir: async (path: string, recursive?: boolean) => {
-        throw new Error('File system access not implemented');
+      stat: async (filePath: string) => {
+        const safePath = resolveSafePath(filePath);
+        return fsPromises.stat(safePath);
       },
-      readdir: async (path: string) => [],
-      delete: async (path: string, recursive?: boolean) => {
-        throw new Error('File system access not implemented');
+      mkdir: async (filePath: string, recursive?: boolean) => {
+        const safePath = resolveSafePath(filePath);
+        return fsPromises.mkdir(safePath, { recursive: recursive ?? false });
+      },
+      readdir: async (filePath: string) => {
+        const safePath = resolveSafePath(filePath);
+        return fsPromises.readdir(safePath);
+      },
+      delete: async (filePath: string, recursive?: boolean) => {
+        const safePath = resolveSafePath(filePath);
+        this.logger.info(`[Plugin ${pluginId}] delete: ${safePath}`);
+        return fsPromises.rm(safePath, { recursive: recursive ?? false });
       },
       rename: async (oldPath: string, newPath: string) => {
-        throw new Error('File system access not implemented');
+        const safeOld = resolveSafePath(oldPath);
+        const safeNew = resolveSafePath(newPath);
+        return fsPromises.rename(safeOld, safeNew);
       },
-      copy: async (src: string, dest: string, options?: any) => {
-        throw new Error('File system access not implemented');
+      copy: async (src: string, dest: string) => {
+        const safeSrc = resolveSafePath(src);
+        const safeDest = resolveSafePath(dest);
+        return fsPromises.copyFile(safeSrc, safeDest);
       },
-      watch: (path: string, options?: any) => {
-        throw new Error('File system access not implemented');
+      watch: (_path: string) => {
+        throw new Error('File watching not available for plugins');
       },
-      getAllowedPaths: () => []
+      getAllowedPaths: () => [pluginDataDir],
     };
   }
 
@@ -1499,21 +1568,43 @@ export class PluginManager extends EventEmitter {
    * @param pluginId - The plugin ID
    * @returns Shell interface
    */
-  private createPluginShell(pluginId: string): any {
-    // Implementation would provide restricted shell access
+  private createPluginShell(pluginId: string): Record<string, unknown> {
+    const { execFile } = require('child_process');
+    const { promisify } = require('util');
+    const execFileAsync = promisify(execFile);
+
+    // Allowed commands that plugins can execute
+    const allowedCommands = ['git', 'node', 'npm', 'npx', 'bun', 'bunx', 'cat', 'ls', 'echo', 'pwd'];
+
+    const validateCommand = (command: string): boolean => {
+      const baseCmd = command.split(/\s+/)[0] || '';
+      return allowedCommands.includes(baseCmd);
+    };
+
     return {
-      execute: async (command: string, options?: any) => {
-        this.logger.warn(`Shell execute from ${pluginId}: ${command}`);
-        throw new Error('Shell access not implemented');
+      execute: async (command: string, options?: { cwd?: string; timeout?: number }) => {
+        if (!validateCommand(command)) {
+          throw new Error(`Shell command not allowed: ${command.split(/\s+/)[0]}. Allowed: ${allowedCommands.join(', ')}`);
+        }
+        this.logger.info(`[Plugin ${pluginId}] shell: ${command}`);
+        const parts = command.split(/\s+/);
+        const cmd = parts[0];
+        const args = parts.slice(1);
+        const result = await execFileAsync(cmd, args, {
+          cwd: options?.cwd,
+          timeout: options?.timeout || 30000,
+          maxBuffer: 10 * 1024 * 1024,
+        });
+        return { stdout: result.stdout, stderr: result.stderr, exitCode: 0 };
       },
-      executeStream: (command: string, options?: any) => {
-        throw new Error('Shell access not implemented');
+      executeStream: (_command: string) => {
+        throw new Error('Streaming shell execution not available for plugins');
       },
-      spawn: (command: string, args?: string[], options?: any) => {
-        throw new Error('Shell access not implemented');
+      spawn: (_command: string) => {
+        throw new Error('Process spawning not available for plugins');
       },
-      getAllowedCommands: () => [],
-      getAllowedPaths: () => []
+      getAllowedCommands: () => [...allowedCommands],
+      getAllowedPaths: () => [],
     };
   }
 
@@ -1523,21 +1614,62 @@ export class PluginManager extends EventEmitter {
    * @param pluginId - The plugin ID
    * @returns LLM interface
    */
-  private createPluginLLM(pluginId: string): any {
-    // Implementation would provide restricted LLM access
+  private createPluginLLM(pluginId: string): Record<string, unknown> {
+    // LLM access is provided via the Anthropic client wrapper
+    // Plugins get rate-limited, sandboxed access
+    let requestCount = 0;
+    const maxRequestsPerMinute = 10;
+    const requestTimestamps: number[] = [];
+
+    const checkRateLimit = (): boolean => {
+      const now = Date.now();
+      const windowStart = now - 60000;
+      // Remove old timestamps
+      while (requestTimestamps.length > 0 && requestTimestamps[0]! < windowStart) {
+        requestTimestamps.shift();
+      }
+      return requestTimestamps.length < maxRequestsPerMinute;
+    };
+
     return {
-      complete: async (prompt: string, options?: any) => {
-        this.logger.warn(`LLM complete from ${pluginId}`);
-        throw new Error('LLM access not implemented');
+      complete: async (prompt: string, options?: { model?: string; maxTokens?: number }) => {
+        if (!checkRateLimit()) {
+          throw new Error(`Rate limit exceeded for plugin ${pluginId}: max ${maxRequestsPerMinute} requests/minute`);
+        }
+        requestTimestamps.push(Date.now());
+        requestCount++;
+        this.logger.info(`[Plugin ${pluginId}] LLM complete (request #${requestCount})`);
+
+        // Use the host's Anthropic client
+        try {
+          const Anthropic = require('@anthropic-ai/sdk');
+          const client = new Anthropic();
+          const response = await client.messages.create({
+            model: options?.model || 'claude-sonnet-4-20250514',
+            max_tokens: Math.min(options?.maxTokens || 1024, 4096), // Cap at 4096 for plugins
+            messages: [{ role: 'user', content: prompt }],
+          });
+          return {
+            content: response.content[0]?.type === 'text' ? response.content[0].text : '',
+            usage: {
+              inputTokens: response.usage.input_tokens,
+              outputTokens: response.usage.output_tokens,
+            },
+          };
+        } catch (error) {
+          throw new Error(`LLM request failed: ${error instanceof Error ? error.message : String(error)}`);
+        }
       },
-      streamComplete: (prompt: string, options?: any) => {
-        throw new Error('LLM access not implemented');
+      streamComplete: (_prompt: string) => {
+        throw new Error('Streaming LLM access not available for plugins');
       },
-      getAvailableModels: async () => [],
-      getModelInfo: async (model: string) => {
-        throw new Error('LLM access not implemented');
-      },
-      countTokens: async (text: string, model?: string) => 0
+      getAvailableModels: async () => ['claude-sonnet-4-20250514', 'claude-haiku-4-5-20251001'],
+      getModelInfo: async (model: string) => ({
+        name: model,
+        maxTokens: 4096,
+        description: 'Available via plugin sandbox',
+      }),
+      countTokens: async (text: string) => Math.ceil(text.length / 4),
     };
   }
 

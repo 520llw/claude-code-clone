@@ -46,6 +46,7 @@ export function useStreaming(options: StreamingOptions = {}): {
   });
   
   const [isPaused, setIsPaused] = useState(false);
+  const isPausedRef = useRef(false);
   const contentRef = useRef('');
   const targetContentRef = useRef('');
   const animationRef = useRef<NodeJS.Timeout | null>(null);
@@ -75,7 +76,8 @@ export function useStreaming(options: StreamingOptions = {}): {
     startTimeRef.current = Date.now();
     lastChunkTimeRef.current = Date.now();
     setIsPaused(false);
-    
+    isPausedRef.current = false;
+
     setState({
       isStreaming: true,
       content: '',
@@ -85,7 +87,7 @@ export function useStreaming(options: StreamingOptions = {}): {
     });
     
     const streamChunk = () => {
-      if (isPaused) return;
+      if (isPausedRef.current) return;
       
       const target = targetContentRef.current;
       const currentPos = positionRef.current;
@@ -171,6 +173,7 @@ export function useStreaming(options: StreamingOptions = {}): {
    */
   const pause = useCallback(() => {
     setIsPaused(true);
+    isPausedRef.current = true;
     clearAnimation();
   }, [clearAnimation]);
   
@@ -183,9 +186,10 @@ export function useStreaming(options: StreamingOptions = {}): {
     }
     
     setIsPaused(false);
-    
+    isPausedRef.current = false;
+
     const streamChunk = () => {
-      if (isPaused) return;
+      if (isPausedRef.current) return;
       
       const target = targetContentRef.current;
       const currentPos = positionRef.current;

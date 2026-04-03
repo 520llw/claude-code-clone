@@ -438,11 +438,11 @@ export class StreamingHandler {
   /**
    * Flushes remaining buffer data
    */
-  private flushBuffer(): void {
+  private async flushBuffer(): Promise<void> {
     if (this.state.buffer.trim()) {
       this.logger.debug('[StreamingHandler] Flushing buffer:', this.state.buffer);
       // Process any remaining partial event
-      this.processEvent(this.state.buffer);
+      await this.processEvent(this.state.buffer);
     }
   }
 

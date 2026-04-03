@@ -1,6 +1,6 @@
 /**
  * Query Engine Module
- * 
+ *
  * This module exports all query engine-related classes and interfaces.
  */
 
@@ -21,11 +21,8 @@ export type {
   ModelInfo,
 } from '@core/interfaces';
 
-// Placeholder for future query engine implementations
-// These will be implemented in separate files:
-// - engine.ts
-// - client.ts
-// - streaming.ts
-// - caching.ts
-// - retry.ts
-// - parsers.ts
+// Actual implementations
+export { QueryEngine } from '@core/QueryEngine';
+export type { QueryEngineConfig, QueryResponse } from '@core/QueryEngine';
+export { StreamingHandler } from '@core/StreamingHandler';
+export { TokenTracker } from '@core/TokenTracker';

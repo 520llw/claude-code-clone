@@ -103,6 +103,7 @@ export interface AgentEvents {
   onComplete?: (result: AgentResult) => void;
   onError?: (error: Error) => void;
   onStreamToken?: (token: string) => void;
+  onPermissionRequest?: (toolName: string, params: Record<string, unknown>) => Promise<boolean>;
 }
 
 /**
@@ -670,23 +671,23 @@ export class AgentLoop {
       );
 
       if (!permission.granted && !permission.decision) {
-        // Need to wait for user approval
+        // Request user approval via callback
         this.setState('awaiting_permission');
-        
-        // For now, auto-approve in non-interactive mode
-        // In production, this would wait for user input
-        const decision = this.permissionManager.resolvePermissionRequest(
-          this.permissionManager.getPendingRequests()[0]?.id || '',
-          true,
-          'session'
-        );
-        
-        if (!decision.granted) {
+
+        let userApproved = false;
+        if (this.events.onPermissionRequest) {
+          userApproved = await this.events.onPermissionRequest(
+            toolCall.toolName,
+            toolCall.parameters as Record<string, unknown>
+          );
+        }
+
+        if (!userApproved) {
           const error = new PermissionError(
             `Permission denied for tool: ${toolCall.toolName}`,
             toolCall.toolName
           );
-          
+
           return {
             result: {
               toolCallId: toolCall.id,
@@ -705,6 +706,13 @@ export class AgentLoop {
             },
           };
         }
+
+        // User approved - cache the decision for this session
+        this.permissionManager.resolvePermissionRequest(
+          this.permissionManager.getPendingRequests()[0]?.id || '',
+          true,
+          'session'
+        );
       }
     }
 
@@ -785,9 +793,9 @@ export class AgentLoop {
    * 
    * @param message - Completed message
    */
-  private handleStreamedComplete(message: Message): void {
+  private async handleStreamedComplete(message: Message): Promise<void> {
     this.contextManager.addMessage(message);
-    this.persistMessage(message);
+    await this.persistMessage(message);
   }
 
   /**

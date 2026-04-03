@@ -6,10 +6,14 @@
  */
 
 import { z } from 'zod';
-import { readFile, writeFile, exists, mkdir } from 'node:fs/promises';
+import { readFile, writeFile, mkdir, access } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { homedir } from 'node:os';
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
+
+async function exists(p: string): Promise<boolean> {
+  try { await access(p); return true; } catch { return false; }
+}
 import type {
   AppConfig,
   IConfigManager,
@@ -25,7 +29,7 @@ import type {
  * Model configuration schema
  */
 export const ModelConfigSchema = z.object({
-  provider: z.enum(['anthropic', 'openai', 'google', 'custom']).default('anthropic'),
+  provider: z.enum(['anthropic', 'openai', 'google', 'kimi', 'custom']).default('anthropic'),
   name: z.string().default('claude-3-5-sonnet-20241022'),
   apiKey: z.string().optional(),
   baseUrl: z.string().url().optional(),
@@ -476,9 +480,8 @@ export async function loadConfig(options: {
  * Load configuration from environment variables
  */
 function loadEnvVars(manager: ConfigManager): void {
-  const envMappings: Record<string, string> = {
-    CLAUDE_API_KEY: 'model.apiKey',
-    CLAUDE_MODEL: 'model.name',
+  // General config env vars
+  const generalMappings: Record<string, string> = {
     CLAUDE_MAX_TOKENS: 'model.maxTokens',
     CLAUDE_TEMPERATURE: 'model.temperature',
     CLAUDE_CONTEXT_MAX_TOKENS: 'context.maxTokens',
@@ -486,11 +489,35 @@ function loadEnvVars(manager: ConfigManager): void {
     CLAUDE_PLUGINS_DIR: 'plugins.directory',
   };
 
-  for (const [envVar, configPath] of Object.entries(envMappings)) {
+  for (const [envVar, configPath] of Object.entries(generalMappings)) {
     const value = process.env[envVar];
     if (value !== undefined) {
-      const parsed = parseEnvValue(value);
-      manager.set(configPath, parsed);
+      manager.set(configPath, parseEnvValue(value));
+    }
+  }
+
+  // Model name: provider-specific env var takes priority
+  if (process.env.KIMI_MODEL) {
+    manager.set('model.name', process.env.KIMI_MODEL);
+  } else if (process.env.CLAUDE_MODEL) {
+    manager.set('model.name', process.env.CLAUDE_MODEL);
+  }
+
+  // API key: resolve based on current provider setting to avoid collision
+  const provider = (manager.get<string>('model.provider')) || 'anthropic';
+  const apiKeyEnvMap: Record<string, string[]> = {
+    anthropic: ['ANTHROPIC_API_KEY', 'CLAUDE_API_KEY'],
+    openai: ['OPENAI_API_KEY'],
+    kimi: ['MOONSHOT_API_KEY', 'KIMI_API_KEY'],
+    google: ['GOOGLE_API_KEY'],
+  };
+
+  const envVarsForProvider = apiKeyEnvMap[provider] || ['CLAUDE_API_KEY'];
+  for (const envVar of envVarsForProvider) {
+    const value = process.env[envVar];
+    if (value) {
+      manager.set('model.apiKey', value);
+      break;
     }
   }
 }
@@ -556,5 +583,4 @@ function deepMerge<T extends Record<string, unknown>>(
 // Exports
 // ============================================================================
 
-export { ConfigManager };
 export default ConfigManager;

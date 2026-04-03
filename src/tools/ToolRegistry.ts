@@ -109,6 +109,9 @@ export class ToolRegistry extends EventEmitter {
   /** Execution statistics */
   private executionStats: Map<string, { success: number; failure: number }> = new Map();
 
+  /** Stored event listener references for cleanup */
+  private toolListeners: Map<string, Array<{ event: string; handler: (...args: unknown[]) => void }>> = new Map();
+
   /** Global tool configuration */
   private globalConfig: ToolConfig;
 
@@ -225,7 +228,13 @@ export class ToolRegistry extends EventEmitter {
     }
 
     // Remove event listeners
-    registration.tool.removeAllListeners();
+    const listeners = this.toolListeners.get(name.toLowerCase());
+    if (listeners) {
+      for (const { event, handler } of listeners) {
+        registration.tool.off(event, handler);
+      }
+      this.toolListeners.delete(name.toLowerCase());
+    }
 
     // Remove from registry
     this.tools.delete(lowerName);
@@ -750,7 +759,9 @@ export class ToolRegistry extends EventEmitter {
    * @param tool - Tool to set up listeners for
    */
   private setupToolEventListeners(tool: Tool): void {
-    tool.on('execution:complete', (event: { executionId: string; result: ToolResult }) => {
+    const listeners: Array<{ event: string; handler: (...args: unknown[]) => void }> = [];
+
+    const onComplete = (event: { executionId: string; result: ToolResult }) => {
       const stats = this.executionStats.get(tool.name);
       if (stats) {
         if (event.result.success) {
@@ -760,15 +771,23 @@ export class ToolRegistry extends EventEmitter {
         }
       }
       this.emit('tool:executionComplete', { tool: tool.name, ...event });
-    });
+    };
+    tool.on('execution:complete', onComplete);
+    listeners.push({ event: 'execution:complete', handler: onComplete as (...args: unknown[]) => void });
 
-    tool.on('execution:error', (event: { executionId: string; error: unknown }) => {
+    const onError = (event: { executionId: string; error: unknown }) => {
       this.emit('tool:executionError', { tool: tool.name, ...event });
-    });
+    };
+    tool.on('execution:error', onError);
+    listeners.push({ event: 'execution:error', handler: onError as (...args: unknown[]) => void });
 
-    tool.on('permission:requested', (event: { executionId: string; reason: string }) => {
+    const onPermission = (event: { executionId: string; reason: string }) => {
       this.emit('tool:permissionRequested', { tool: tool.name, ...event });
-    });
+    };
+    tool.on('permission:requested', onPermission);
+    listeners.push({ event: 'permission:requested', handler: onPermission as (...args: unknown[]) => void });
+
+    this.toolListeners.set(tool.name, listeners);
   }
 }
 

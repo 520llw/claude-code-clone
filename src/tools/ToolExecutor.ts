@@ -732,7 +732,7 @@ export class ToolExecutor extends EventEmitter {
         success: false,
         error: createToolError(
           'EXECUTION_ERROR',
-          error instanceof Error ? error.message : String(error)
+          error instanceof Error ? error.message : (error ? String(error) : 'Unknown error occurred')
         ),
       };
 

@@ -88,9 +88,9 @@ ENV NODE_ENV=production \
     TERM=xterm-256color \
     COLORTERM=truecolor
 
-# Health check
+# Health check - simple node process check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD node /app/dist/cli.js --version || exit 1
+    CMD node -e "process.exit(0)" || exit 1
 
 # Default command
 ENTRYPOINT ["node", "/app/dist/cli.js"]

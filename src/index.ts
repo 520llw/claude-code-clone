@@ -203,58 +203,6 @@ export {
   createLogger,
   getDefaultLogger,
   getLogger,
-  
-  // Async utilities
-  sleep,
-  createDeferred,
-  withTimeout,
-  retry,
-  batchPromises,
-  
-  // String utilities
-  truncate,
-  capitalize,
-  camelToKebab,
-  kebabToCamel,
-  stripAnsi,
-  countLines,
-  indent,
-  wrapText,
-  
-  // Array utilities
-  groupBy,
-  unique,
-  chunk,
-  flatten,
-  last,
-  first,
-  
-  // Object utilities
-  deepClone,
-  deepMerge,
-  pick,
-  omit,
-  isEmpty,
-  
-  // Validation utilities
-  isNonEmptyString,
-  isPositiveNumber,
-  isValidUrl,
-  isValidEmail,
-  
-  // File path utilities
-  normalizePath,
-  getExtension,
-  getBaseName,
-  
-  // Token utilities
-  estimateTokens,
-  estimateTotalTokens,
-  
-  // UUID utilities
-  uuidv4,
-  validateUuid,
-  shortUuid,
 } from './utils/index';
 
 // ============================================================================
@@ -279,9 +227,6 @@ export type { Theme } from './ui/index';
 // ============================================================================
 // Default Export
 // ============================================================================
-
-import { ConfigManager } from './config/index';
-import { VERSION } from './core/index';
 
 export default {
   VERSION,

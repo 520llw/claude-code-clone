@@ -516,7 +516,9 @@ export abstract class Tool extends EventEmitter {
         validatedInput,
         context,
         timeout,
-        options.signal
+        options.signal,
+        executionId,
+        startedAt
       );
 
       // Step 6: Cache result if successful
@@ -721,11 +723,13 @@ export abstract class Tool extends EventEmitter {
     input: unknown,
     context: ToolContext,
     timeout: number,
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    executionId?: string,
+    startedAt?: Date
   ): Promise<ToolResult> {
     return new Promise((resolve, reject) => {
-      const executionId = uuidv4();
-      const startedAt = new Date();
+      const execId = executionId || uuidv4();
+      const execStartedAt = startedAt || new Date();
 
       const timeoutId = setTimeout(() => {
         const error: ToolError = {
@@ -733,7 +737,7 @@ export abstract class Tool extends EventEmitter {
           message: `Tool execution timed out after ${timeout}ms`,
           retryable: true,
         };
-        resolve(this.createErrorResult(executionId, startedAt, error, ToolExecutionStatus.TIMEOUT));
+        resolve(this.createErrorResult(execId, execStartedAt, error, ToolExecutionStatus.TIMEOUT));
       }, timeout);
 
       const handleAbort = () => {
@@ -743,7 +747,7 @@ export abstract class Tool extends EventEmitter {
           message: 'Tool execution was cancelled',
           retryable: true,
         };
-        resolve(this.createErrorResult(executionId, startedAt, error, ToolExecutionStatus.CANCELLED));
+        resolve(this.createErrorResult(execId, execStartedAt, error, ToolExecutionStatus.CANCELLED));
       };
 
       if (signal) {
