@@ -1,0 +1,44 @@
+{
+  "id": "session_001",
+  "name": "Basic Test Session",
+  "createdAt": 1704067200000,
+  "updatedAt": 1704069000000,
+  "messages": [
+    {
+      "id": "msg_001",
+      "role": "system",
+      "content": "You are Claude Code, a helpful coding assistant.",
+      "timestamp": 1704067200000
+    },
+    {
+      "id": "msg_002",
+      "role": "user",
+      "content": "Hello! Can you help me with a TypeScript project?",
+      "timestamp": 1704067250000
+    },
+    {
+      "id": "msg_003",
+      "role": "assistant",
+      "content": "Hello! I'd be happy to help you with your TypeScript project. What would you like to work on?",
+      "timestamp": 1704067255000
+    },
+    {
+      "id": "msg_004",
+      "role": "user",
+      "content": "I need to create a function that validates email addresses.",
+      "timestamp": 1704067300000
+    },
+    {
+      "id": "msg_005",
+      "role": "assistant",
+      "content": "I can help you create an email validation function. Here's a simple implementation:\n\n```typescript\nfunction validateEmail(email: string): boolean {\n  const emailRegex = /^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/;\n  return emailRegex.test(email);\n}\n```\n\nWould you like me to add more features like checking for common domains?",
+      "timestamp": 1704067310000
+    }
+  ],
+  "metadata": {
+    "projectPath": "/home/user/projects/typescript-app",
+    "language": "typescript",
+    "topics": ["validation", "regex"]
+  },
+  "isArchived": false
+}

@@ -1,0 +1,311 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release (e.g., 1.0.0)'
+        required: true
+        type: string
+      prerelease:
+        description: 'Is this a prerelease?'
+        required: false
+        default: false
+        type: boolean
+
+env:
+  NODE_VERSION: '18'
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  # Validate release
+  validate:
+    name: Validate Release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate version format
+        run: |
+          VERSION="${{ github.ref_name }}"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VERSION="v${{ github.event.inputs.version }}"
+          fi
+          if [[ ! "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9]+)?$ ]]; then
+            echo "Invalid version format: $VERSION"
+            exit 1
+          fi
+          echo "Version format is valid: $VERSION"
+
+      - name: Check CHANGELOG
+        run: |
+          if [ "${{ github.event_name }}" = "push" ]; then
+            VERSION="${{ github.ref_name }}"
+            if ! grep -q "$VERSION" CHANGELOG.md; then
+              echo "WARNING: $VERSION not found in CHANGELOG.md"
+            fi
+          fi
+
+  # Run full test suite
+  test:
+    name: Run Tests
+    runs-on: ubuntu-latest
+    needs: validate
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests
+        run: npm run test:ci
+
+      - name: Run lint
+        run: npm run lint
+
+  # Build all packages
+  build:
+    name: Build Packages
+    needs: test
+    uses: ./.github/workflows/build.yml
+
+  # Publish to npm
+  publish-npm:
+    name: Publish to npm
+    runs-on: ubuntu-latest
+    needs: [build, test]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build:prod
+
+      - name: Publish to npm
+        run: |
+          if [[ "${{ github.ref_name }}" =~ -(alpha|beta|rc) ]]; then
+            npm publish --tag next --access public
+          else
+            npm publish --access public
+          fi
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  # Publish to GitHub Releases
+  publish-github:
+    name: Publish to GitHub Releases
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Organize artifacts
+        run: |
+          mkdir -p release
+          find artifacts -type f \( -name "*.tar.gz" -o -name "*.zip" -o -name "*.tgz" \) -exec cp {} release/ \;
+
+      - name: Generate release notes
+        run: |
+          VERSION="${{ github.ref_name }}"
+          echo "# Claude Code Clone $VERSION" > release-notes.md
+          echo "" >> release-notes.md
+          echo "## Installation" >> release-notes.md
+          echo "" >> release-notes.md
+          echo "### npm" >> release-notes.md
+          echo '```bash' >> release-notes.md
+          echo 'npm install -g claude-code-clone' >> release-notes.md
+          echo '```' >> release-notes.md
+          echo "" >> release-notes.md
+          echo "### macOS/Linux" >> release-notes.md
+          echo '```bash' >> release-notes.md
+          echo 'curl -fsSL https://github.com/${{ github.repository }}/releases/download/$VERSION/install.sh | bash' >> release-notes.md
+          echo '```' >> release-notes.md
+          echo "" >> release-notes.md
+          echo "### Windows" >> release-notes.md
+          echo '```powershell' >> release-notes.md
+          echo 'iwr -useb https://github.com/${{ github.repository }}/releases/download/$VERSION/install.ps1 | iex' >> release-notes.md
+          echo '```' >> release-notes.md
+          echo "" >> release-notes.md
+          echo "## Changelog" >> release-notes.md
+          echo "" >> release-notes.md
+          cat CHANGELOG.md | head -50 >> release-notes.md
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          draft: false
+          prerelease: ${{ contains(github.ref, '-rc') || contains(github.ref, '-beta') || contains(github.ref, '-alpha') || github.event.inputs.prerelease == 'true' }}
+          files: release/*
+          body_path: release-notes.md
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # Update Homebrew formula
+  update-homebrew:
+    name: Update Homebrew Formula
+    runs-on: macos-latest
+    needs: publish-github
+    steps:
+      - name: Checkout homebrew-tap
+        uses: actions/checkout@v4
+        with:
+          repository: yourorg/homebrew-tap
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+
+      - name: Update formula
+        run: |
+          VERSION="${{ github.ref_name }}"
+          VERSION=${VERSION#v}
+          
+          # Download macOS x64 binary and get SHA256
+          curl -sL "https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/claude-code-clone-${{ github.ref_name }}-macos-x64.tar.gz" -o /tmp/macos-x64.tar.gz
+          MACOS_X64_SHA=$(shasum -a 256 /tmp/macos-x64.tar.gz | cut -d' ' -f1)
+          
+          # Download macOS arm64 binary and get SHA256
+          curl -sL "https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/claude-code-clone-${{ github.ref_name }}-macos-arm64.tar.gz" -o /tmp/macos-arm64.tar.gz
+          MACOS_ARM64_SHA=$(shasum -a 256 /tmp/macos-arm64.tar.gz | cut -d' ' -f1)
+          
+          # Update formula
+          cat > Formula/claude-code-clone.rb << EOF
+      class ClaudeCodeClone < Formula
+        desc "AI-powered terminal coding assistant"
+        homepage "https://github.com/${{ github.repository }}"
+        version "$VERSION"
+
+        if Hardware::CPU.arm?
+          url "https://github.com/${{ github.repository }}/releases/download/v$VERSION/claude-code-clone-v$VERSION-macos-arm64.tar.gz"
+          sha256 "$MACOS_ARM64_SHA"
+        else
+          url "https://github.com/${{ github.repository }}/releases/download/v$VERSION/claude-code-clone-v$VERSION-macos-x64.tar.gz"
+          sha256 "$MACOS_X64_SHA"
+        end
+
+        def install
+          bin.install "claude-code-clone"
+          bin.install_symlink "claude-code-clone" => "ccode"
+        end
+
+        test do
+          system "#{bin}/claude-code-clone", "--version"
+        end
+      end
+      EOF
+
+      - name: Commit and push
+        run: |
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          git add Formula/claude-code-clone.rb
+          git commit -m "Update claude-code-clone to ${{ github.ref_name }}"
+          git push
+
+  # Publish to AUR
+  publish-aur:
+    name: Publish to AUR
+    runs-on: ubuntu-latest
+    needs: publish-github
+    steps:
+      - name: Checkout AUR package
+        uses: actions/checkout@v4
+        with:
+          repository: aur.archlinux.org/claude-code-clone.git
+          token: ${{ secrets.AUR_SSH_KEY }}
+
+      - name: Update PKGBUILD
+        run: |
+          VERSION="${{ github.ref_name }}"
+          VERSION=${VERSION#v}
+          
+          # Download Linux x64 binary and get SHA256
+          curl -sL "https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/claude-code-clone-${{ github.ref_name }}-linux-x64.tar.gz" -o /tmp/linux-x64.tar.gz
+          LINUX_X64_SHA=$(sha256sum /tmp/linux-x64.tar.gz | cut -d' ' -f1)
+          
+          cat > PKGBUILD << EOF
+      # Maintainer: Your Name <your.email@example.com>
+      pkgname=claude-code-clone
+      pkgver=$VERSION
+      pkgrel=1
+      pkgdesc="AI-powered terminal coding assistant"
+      arch=('x86_64' 'aarch64')
+      url="https://github.com/${{ github.repository }}"
+      license=('MIT')
+      depends=('nodejs>=18')
+      source_x86_64=("\$pkgname-\$pkgver-x86_64.tar.gz::https://github.com/${{ github.repository }}/releases/download/v\$pkgver/claude-code-clone-v\$pkgver-linux-x64.tar.gz")
+      source_aarch64=("\$pkgname-\$pkgver-aarch64.tar.gz::https://github.com/${{ github.repository }}/releases/download/v\$pkgver/claude-code-clone-v\$pkgver-linux-arm64.tar.gz")
+      sha256sums_x86_64=('$LINUX_X64_SHA')
+      sha256sums_aarch64=('SKIP')
+
+      package() {
+        install -Dm755 "\$pkgname" "\$pkgdir/usr/bin/\$pkgname"
+        ln -s "\$pkgname" "\$pkgdir/usr/bin/ccode"
+      }
+      EOF
+
+      - name: Update .SRCINFO
+        run: makepkg --printsrcinfo > .SRCINFO
+
+      - name: Commit and push
+        run: |
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          git add PKGBUILD .SRCINFO
+          git commit -m "Update to ${{ github.ref_name }}"
+          git push
+
+  # Notify release
+  notify:
+    name: Notify Release
+    runs-on: ubuntu-latest
+    needs: [publish-npm, publish-github]
+    if: always() && needs.publish-npm.result == 'success' && needs.publish-github.result == 'success'
+    steps:
+      - name: Notify Slack
+        uses: 8398a7/action-slack@v3
+        with:
+          status: ${{ job.status }}
+          text: "🚀 Claude Code Clone ${{ github.ref_name }} has been released!"
+          channel: '#releases'
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        if: env.SLACK_WEBHOOK_URL != ''
+
+      - name: Tweet release
+        uses: ethomson/send-tweet-action@v1
+        with:
+          status: "🚀 Claude Code Clone ${{ github.ref_name }} is now available! Install with: npm install -g claude-code-clone"
+          consumer-key: ${{ secrets.TWITTER_CONSUMER_KEY }}
+          consumer-secret: ${{ secrets.TWITTER_CONSUMER_SECRET }}
+          access-token: ${{ secrets.TWITTER_ACCESS_TOKEN }}
+          access-token-secret: ${{ secrets.TWITTER_ACCESS_TOKEN_SECRET }}
+        continue-on-error: true

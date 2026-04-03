@@ -1,0 +1,20 @@
+pkgbase = claude-code-clone
+	pkgdesc = AI-powered terminal coding assistant
+	pkgver = 1.0.0
+	pkgrel = 1
+	url = https://github.com/yourorg/claude-code-clone
+	arch = x86_64
+	arch = aarch64
+	license = MIT
+	depends = glibc
+	depends = gcc-libs
+	optdepends = nodejs>=18: For plugin development
+	conflicts = claude-code
+	provides = claude-code-clone
+	provides = ccode
+	source_x86_64 = claude-code-clone-1.0.0-x86_64.tar.gz::https://github.com/yourorg/claude-code-clone/releases/download/v1.0.0/claude-code-clone-v1.0.0-linux-x64.tar.gz
+	sha256sums_x86_64 = PLACEHOLDER_SHA256_X64
+	source_aarch64 = claude-code-clone-1.0.0-aarch64.tar.gz::https://github.com/yourorg/claude-code-clone/releases/download/v1.0.0/claude-code-clone-v1.0.0-linux-arm64.tar.gz
+	sha256sums_aarch64 = PLACEHOLDER_SHA256_ARM64
+
+pkgname = claude-code-clone

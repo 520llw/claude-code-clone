@@ -1,0 +1,62 @@
+# Bun Configuration for Claude Code Clone
+# https://bun.sh/docs/runtime/bunfig
+
+[install]
+# Use exact versions for reproducibility
+exact = true
+
+# Cache settings
+cache = true
+
+# Registry configuration
+registry = "https://registry.npmjs.org/"
+
+[install.scopes]
+# Private registry scopes if needed
+# "@company" = { url = "https://private.registry.com", token = "$NPM_TOKEN" }
+
+[run]
+# Default environment for bun run
+bun = true
+
+[test]
+# Test configuration
+coverage = true
+coverageThreshold = { lines = 0.7, functions = 0.7, statements = 0.7, branches = 0.6 }
+preload = ["./tests/setup.ts"]
+
+[build]
+# Build configuration
+entrypoints = ["./src/cli.tsx"]
+outdir = "./dist"
+minify = true
+target = "node"
+format = "esm"
+sourcemap = "external"
+
+[loader]
+# Custom loaders
+".tsx" = "tsx"
+".ts" = "ts"
+".json" = "json"
+".yaml" = "yaml"
+".yml" = "yaml"
+
+[debug]
+# Debug configuration
+# Enable for verbose logging
+# logLevel = "debug"
+
+[telemetry]
+# Disable Bun's built-in telemetry
+disable = true
+
+[env]
+# Default environment variables
+NODE_ENV = "development"
+CLI_NAME = "claude-code"
+CLI_VERSION = "1.0.0"
+
+[runtime]
+# Runtime settings
+# smol = true  # Use for memory-constrained environments

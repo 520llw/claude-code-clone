@@ -1,0 +1,44 @@
+#!/usr/bin/make -f
+# -*- makefile -*-
+
+# Uncomment this to turn on verbose mode.
+#export DH_VERBOSE=1
+
+export DH_GOPKG := github.com/yourorg/claude-code-clone
+
+%:
+	dh $@
+
+override_dh_auto_build:
+	# Binary is pre-built, no build step needed
+	@echo "Using pre-built binary"
+
+override_dh_auto_install:
+	# Install binary
+	install -D -m 0755 debian/claude-code-clone usr/bin/claude-code-clone
+	
+	# Create symlink for 'ccode'
+	ln -sf claude-code-clone usr/bin/ccode
+	
+	# Install shell completions
+	install -D -m 0644 debian/completions/claude-code-clone.bash \
+		usr/share/bash-completion/completions/claude-code-clone
+	install -D -m 0644 debian/completions/_claude-code-clone \
+		usr/share/zsh/vendor-completions/_claude-code-clone
+	install -D -m 0644 debian/completions/claude-code-clone.fish \
+		usr/share/fish/vendor_completions.d/claude-code-clone.fish
+	
+	# Install man page
+	install -D -m 0644 debian/claude-code-clone.1 usr/share/man/man1/claude-code-clone.1
+	
+	# Install documentation
+	install -D -m 0644 README.md usr/share/doc/claude-code-clone/README.md
+	install -D -m 0644 CHANGELOG.md usr/share/doc/claude-code-clone/CHANGELOG.md
+
+override_dh_auto_test:
+	# Run basic tests
+	./debian/claude-code-clone --version
+
+override_dh_strip:
+	# Don't strip the binary (it's already optimized)
+	dh_strip --exclude=claude-code-clone

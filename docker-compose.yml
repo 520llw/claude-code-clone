@@ -1,0 +1,163 @@
+# =============================================================================
+# Claude Code Clone - Docker Compose Configuration
+# =============================================================================
+# 
+# Usage:
+#   docker-compose up -d          # Start services
+#   docker-compose down           # Stop services
+#   docker-compose logs -f        # View logs
+#   docker-compose exec app sh    # Enter container
+#
+# =============================================================================
+
+version: '3.8'
+
+services:
+  # Main application service
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: production
+      args:
+        - NODE_ENV=production
+    image: claude-code-clone:latest
+    container_name: claude-code-clone
+    
+    # Environment variables
+    environment:
+      - NODE_ENV=production
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - CLAUDE_CODE_CONFIG=/home/claude/.config/claude-code-clone/config.json
+      - TERM=xterm-256color
+      - COLORTERM=truecolor
+    
+    # Volume mounts
+    volumes:
+      # Mount current directory as workspace
+      - .:/workspace:rw
+      # Persist configuration
+      - claude-config:/home/claude/.config/claude-code-clone
+      # Mount SSH keys (optional)
+      - ~/.ssh:/home/claude/.ssh:ro
+      # Mount Git configuration (optional)
+      - ~/.gitconfig:/home/claude/.gitconfig:ro
+    
+    # Working directory
+    working_dir: /workspace
+    
+    # Interactive mode
+    stdin_open: true
+    tty: true
+    
+    # Restart policy
+    restart: unless-stopped
+    
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+    
+    # Health check
+    healthcheck:
+      test: ["CMD", "node", "/app/dist/cli.js", "--version"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5s
+    
+    # Networks
+    networks:
+      - claude-network
+
+  # Development service
+  dev:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: development
+    image: claude-code-clone:dev
+    container_name: claude-code-clone-dev
+    
+    environment:
+      - NODE_ENV=development
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+    
+    volumes:
+      - .:/app:rw
+      - /app/node_modules
+      - claude-dev-config:/home/node/.config/claude-code-clone
+    
+    stdin_open: true
+    tty: true
+    
+    # Debug port
+    ports:
+      - "9229:9229"
+    
+    command: npm run dev
+    
+    networks:
+      - claude-network
+    
+    profiles:
+      - dev
+
+  # Test service
+  test:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: development
+    image: claude-code-clone:test
+    container_name: claude-code-clone-test
+    
+    environment:
+      - NODE_ENV=test
+      - CI=true
+    
+    volumes:
+      - .:/app:ro
+      - /app/node_modules
+    
+    command: npm run test:ci
+    
+    networks:
+      - claude-network
+    
+    profiles:
+      - test
+
+  # Documentation service (optional)
+  docs:
+    image: nginx:alpine
+    container_name: claude-code-clone-docs
+    
+    volumes:
+      - ./docs:/usr/share/nginx/html:ro
+    
+    ports:
+      - "8080:80"
+    
+    networks:
+      - claude-network
+    
+    profiles:
+      - docs
+
+# Named volumes
+volumes:
+  claude-config:
+    driver: local
+  claude-dev-config:
+    driver: local
+
+# Networks
+networks:
+  claude-network:
+    driver: bridge

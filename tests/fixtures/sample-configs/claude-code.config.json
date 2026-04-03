@@ -1,0 +1,116 @@
+{
+  "version": "1.0.0",
+  "name": "Claude Code Test Configuration",
+  "description": "Configuration for testing Claude Code clone",
+  
+  "llm": {
+    "provider": "anthropic",
+    "model": "claude-3-sonnet-20240229",
+    "maxTokens": 4096,
+    "temperature": 0.7,
+    "timeout": 60000
+  },
+  
+  "context": {
+    "maxTokens": 8000,
+    "compressionThreshold": 0.8,
+    "preserveSystemMessage": true,
+    "maxIterations": 10
+  },
+  
+  "tools": {
+    "enabled": [
+      "file_read",
+      "file_write",
+      "file_edit",
+      "bash",
+      "grep",
+      "list",
+      "web_fetch"
+    ],
+    "config": {
+      "file_read": {
+        "maxFileSize": 1048576,
+        "maxLines": 1000
+      },
+      "file_write": {
+        "createDirs": true,
+        "backup": false
+      },
+      "bash": {
+        "timeout": 30000,
+        "maxOutput": 1048576,
+        "blockedCommands": [
+          "rm -rf /",
+          "format",
+          "mkfs",
+          "dd"
+        ]
+      },
+      "grep": {
+        "maxResults": 1000,
+        "caseSensitive": false
+      }
+    }
+  },
+  
+  "permissions": {
+    "autoApprove": [
+      "file_read",
+      "list",
+      "grep"
+    ],
+    "requireConfirmation": [
+      "file_write",
+      "file_edit",
+      "bash"
+    ],
+    "blocked": [
+      "system_shutdown",
+      "format_disk"
+    ],
+    "maxRiskLevel": "high"
+  },
+  
+  "ui": {
+    "theme": "dark",
+    "showToolCalls": true,
+    "showTokenCount": true,
+    "streaming": true,
+    "messageHistory": {
+      "enabled": true,
+      "maxMessages": 100
+    }
+  },
+  
+  "session": {
+    "autoSave": true,
+    "savePath": ".claude/sessions",
+    "maxSessions": 50,
+    "expirationDays": 30
+  },
+  
+  "logging": {
+    "level": "info",
+    "file": ".claude/logs/claude-code.log",
+    "maxSize": 10485760,
+    "maxFiles": 5
+  },
+  
+  "plugins": {
+    "enabled": [],
+    "directory": ".claude/plugins"
+  },
+  
+  "mcp": {
+    "enabled": false,
+    "servers": []
+  },
+  
+  "performance": {
+    "cacheEnabled": true,
+    "cacheSize": 100,
+    "parallelToolExecution": true,
+    "maxConcurrentTools": 5
+  }
+}

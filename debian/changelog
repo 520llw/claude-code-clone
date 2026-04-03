@@ -1,0 +1,10 @@
+claude-code-clone (1.0.0-1) unstable; urgency=medium
+
+  * Initial release
+  * AI-powered terminal coding assistant
+  * Interactive coding sessions
+  * Natural language code editing
+  * Git integration
+  * Multi-platform support
+
+ -- Your Name <your.email@example.com>  Mon, 01 Jan 2024 00:00:00 +0000

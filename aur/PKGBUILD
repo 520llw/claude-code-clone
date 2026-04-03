@@ -1,0 +1,77 @@
+# Maintainer: Your Name <your.email@example.com>
+# Contributor: Your Name <your.email@example.com>
+
+pkgname=claude-code-clone
+pkgver=1.0.0
+pkgrel=1
+pkgdesc="AI-powered terminal coding assistant"
+arch=('x86_64' 'aarch64')
+url="https://github.com/yourorg/claude-code-clone"
+license=('MIT')
+depends=('glibc' 'gcc-libs')
+optdepends=('nodejs>=18: For plugin development')
+conflicts=('claude-code')
+provides=('claude-code-clone' 'ccode')
+
+# Source URLs for different architectures
+source_x86_64=("${pkgname}-${pkgver}-x86_64.tar.gz::https://github.com/yourorg/claude-code-clone/releases/download/v${pkgver}/claude-code-clone-v${pkgver}-linux-x64.tar.gz")
+source_aarch64=("${pkgname}-${pkgver}-aarch64.tar.gz::https://github.com/yourorg/claude-code-clone/releases/download/v${pkgver}/claude-code-clone-v${pkgver}-linux-arm64.tar.gz")
+
+# SHA256 checksums (will be updated by CI)
+sha256sums_x86_64=('PLACEHOLDER_SHA256_X64')
+sha256sums_aarch64=('PLACEHOLDER_SHA256_ARM64')
+
+# Validity checks
+validpgpkeys=()
+
+prepare() {
+    # Verify binary exists in archive
+    if [ ! -f "${srcdir}/${pkgname}" ]; then
+        echo "Error: Binary not found in archive"
+        return 1
+    fi
+}
+
+package() {
+    cd "${srcdir}"
+    
+    # Install main binary
+    install -Dm755 "${pkgname}" "${pkgdir}/usr/bin/${pkgname}"
+    
+    # Create symlink for 'ccode'
+    ln -sf "${pkgname}" "${pkgdir}/usr/bin/ccode"
+    
+    # Install shell completions
+    install -Dm644 "completions/${pkgname}.bash" "${pkgdir}/usr/share/bash-completion/completions/${pkgname}"
+    install -Dm644 "completions/_${pkgname}" "${pkgdir}/usr/share/zsh/site-functions/_${pkgname}"
+    install -Dm644 "completions/${pkgname}.fish" "${pkgdir}/usr/share/fish/vendor_completions.d/${pkgname}.fish"
+    
+    # Install man page
+    install -Dm644 "man/${pkgname}.1" "${pkgdir}/usr/share/man/man1/${pkgname}.1"
+    
+    # Install license
+    install -Dm644 "LICENSE" "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
+    
+    # Install documentation
+    install -Dm644 "README.md" "${pkgdir}/usr/share/doc/${pkgname}/README.md"
+    install -Dm644 "CHANGELOG.md" "${pkgdir}/usr/share/doc/${pkgname}/CHANGELOG.md"
+    
+    # Install desktop entry (if GUI mode is supported)
+    if [ -f "${pkgname}.desktop" ]; then
+        install -Dm644 "${pkgname}.desktop" "${pkgdir}/usr/share/applications/${pkgname}.desktop"
+    fi
+    
+    # Install icons
+    for size in 16 32 48 64 128 256; do
+        if [ -f "icons/${pkgname}-${size}.png" ]; then
+            install -Dm644 "icons/${pkgname}-${size}.png" \
+                "${pkgdir}/usr/share/icons/hicolor/${size}x${size}/apps/${pkgname}.png"
+        fi
+    done
+}
+
+# Optional: check function for testing
+# check() {
+#     cd "${srcdir}"
+#     ./${pkgname} --version
+# }
