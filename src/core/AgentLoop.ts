@@ -183,7 +183,8 @@ export class AgentLoop {
 
     // Register tools
     for (const tool of options.tools) {
-      this.tools.set(tool.definition.name, tool);
+      const toolName = (tool as any).name || (tool as any).definition?.name || 'unknown';
+      this.tools.set(toolName, tool);
     }
 
     // Initialize components

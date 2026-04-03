@@ -301,8 +301,10 @@ Guidelines:
       sessionStoragePath: join(homedir(), '.claude-code', 'sessions'),
     });
 
-    // Initialize agent
-    await agent.initialize();
+    // Initialize agent (if initialize method exists)
+    if (typeof agent.initialize === 'function') {
+      await agent.initialize();
+    }
 
     logger.info('Starting Claude Code Clone', {
       version: '1.0.0',
@@ -319,6 +321,15 @@ Guidelines:
     });
 
     // Render the UI with agent
+    const inkOptions: Record<string, unknown> = {
+      exitOnCtrlC: true,
+    };
+
+    // Handle non-TTY environments (piped input, CI, etc.)
+    if (!process.stdin.isTTY) {
+      inkOptions.stdin = process.stdin;
+    }
+
     const { waitUntilExit } = render(
       <App
         initialPrompt={initialPrompt}
@@ -327,9 +338,7 @@ Guidelines:
         logger={logger}
         agent={agent}
       />,
-      {
-        exitOnCtrlC: true,
-      }
+      inkOptions
     );
 
     // Wait for the UI to exit
