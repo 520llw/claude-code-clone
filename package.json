@@ -27,10 +27,11 @@
     "postinstall": "node scripts/postinstall.cjs",
     "version": "node scripts/version.cjs",
     "release": "node scripts/release.cjs",
-    "dev": "bun run src/cli.tsx",
-    "start": "bun run dist/cli.js",
+    "dev": "node scripts/build.cjs --skip-typecheck --skip-validate && node dist/cli.mjs",
+    "start": "node dist/cli.mjs",
     "setup": "node scripts/setup-config.js",
     "setup:full": "bash scripts/setup.sh",
+    "setup:win": "scripts\\setup.bat",
     "docker:build": "docker build -t claude-code-clone:latest .",
     "docker:run": "docker run -it --rm claude-code-clone:latest"
   },

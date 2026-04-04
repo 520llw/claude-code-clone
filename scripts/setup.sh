@@ -1,394 +1,247 @@
 #!/usr/bin/env bash
 #
-# Claude Code Clone - One-Command Setup Script (macOS/Linux)
+# Claude Code Clone - One-Command Setup & Run
 #
-# Usage:
-#   curl -fsSL https://raw.githubusercontent.com/yourorg/claude-code-clone/main/scripts/setup.sh | bash
-#   OR
+# Usage (Linux/macOS):
+#   curl -fsSL https://raw.githubusercontent.com/520llw/claude-code-clone/main/scripts/setup.sh | bash
+#
+# Usage (Windows Git Bash / MSYS2):
+#   curl -fsSL https://raw.githubusercontent.com/520llw/claude-code-clone/main/scripts/setup.sh | bash
+#
+# Or locally:
 #   bash scripts/setup.sh
 #
-# Features:
-#   - Auto-installs Bun runtime
-#   - Clones/updates repository
-#   - Installs dependencies
-#   - Builds the project
-#   - Interactive API key configuration
-#   - Registers shell alias
-#   - Verifies installation
+# Environment variables (set before running):
+#   MOONSHOT_API_KEY=sk-xxx   (for Kimi)
+#   ANTHROPIC_API_KEY=sk-xxx  (for Claude)
+#   OPENAI_API_KEY=sk-xxx     (for OpenAI)
 #
 
 set -euo pipefail
 
-# ============================================================================
-# Colors & Helpers
-# ============================================================================
-
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-CYAN='\033[0;36m'
-MAGENTA='\033[0;35m'
-BOLD='\033[1m'
-DIM='\033[2m'
-NC='\033[0m'
+# ── Colors ────────────────────────────────────────────────────────────────
+RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'
+BLUE='\033[0;34m'; CYAN='\033[0;36m'; MAGENTA='\033[0;35m'
+BOLD='\033[1m'; DIM='\033[2m'; NC='\033[0m'
 
 info()    { echo -e "${BLUE}[INFO]${NC} $1"; }
-success() { echo -e "${GREEN}[OK]${NC} $1"; }
+success() { echo -e "${GREEN}  OK ${NC} $1"; }
 warn()    { echo -e "${YELLOW}[WARN]${NC} $1"; }
-error()   { echo -e "${RED}[ERROR]${NC} $1"; }
+error()   { echo -e "${RED}[ERR]${NC} $1"; }
 step()    { echo -e "\n${CYAN}${BOLD}>>> $1${NC}"; }
 
-# ============================================================================
-# Configuration
-# ============================================================================
-
-REPO_URL="${REPO_URL:-https://github.com/yourorg/claude-code-clone.git}"
-INSTALL_DIR="${INSTALL_DIR:-$HOME/.claude-code-clone}"
-CONFIG_DIR="${CONFIG_DIR:-$HOME/.config/claude-code}"
+# ── Config ────────────────────────────────────────────────────────────────
+REPO_URL="https://github.com/520llw/claude-code-clone.git"
+INSTALL_DIR="${INSTALL_DIR:-$HOME/claude-code-clone}"
+CONFIG_DIR="$HOME/.config/claude-code"
 CONFIG_FILE="$CONFIG_DIR/config.yaml"
 
-# ============================================================================
-# Banner
-# ============================================================================
-
+# ── Banner ────────────────────────────────────────────────────────────────
 echo -e "${CYAN}"
-cat << 'BANNER'
-  ██████╗██╗      █████╗ ██╗   ██╗██████╗ ███████╗
- ██╔════╝██║     ██╔══██╗██║   ██║██╔══██╗██╔════╝
- ██║     ██║     ███████║██║   ██║██║  ██║█████╗
- ██║     ██║     ██╔══██║██║   ██║██║  ██║██╔══╝
- ╚██████╗███████╗██║  ██║╚██████╔╝██████╔╝███████╗
-  ╚═════╝╚══════╝╚═╝  ╚═╝ ╚═════╝ ╚═════╝ ╚══════╝
-       ██████╗ ██████╗ ██████╗ ███████╗
-      ██╔════╝██╔═══██╗██╔══██╗██╔════╝
-      ██║     ██║   ██║██║  ██║█████╗
-      ██║     ██║   ██║██║  ██║██╔══╝
-      ╚██████╗╚██████╔╝██████╔╝███████╗
-       ╚═════╝ ╚═════╝ ╚═════╝ ╚══════╝
-BANNER
-echo -e "${NC}"
-echo -e "${DIM}One-Command Setup - AI-Powered Terminal Coding Assistant${NC}"
+echo '   ██████╗██╗      █████╗ ██╗   ██╗██████╗ ███████���'
+echo '  ██╔════╝██║     ██╔══██╗██║   ██║██╔══██╗██╔════╝'
+echo '  ██║     █���║     ███████║██║   ██║██║  ██║█████╗  '
+echo '  ██║     ██║     ██╔══██║██║   ██║██║  ██║██╔══╝  '
+echo '  ╚██████╗███████╗██║  ██║╚██████╔╝██████╔╝███████╗'
+echo '   ╚═════╝╚══════╝╚═╝  ╚═╝ ╚═════╝ ╚═════╝ ╚══════╝'
+echo -e "${NC}${DIM}  One-Command Setup${NC}"
 echo ""
 
-# ============================================================================
-# Step 1: Check Prerequisites
-# ============================================================================
-
+# ── Step 1: Check prerequisites ──────────────────────────────────────────
 step "Checking prerequisites"
 
-check_command() {
-  if command -v "$1" &> /dev/null; then
-    success "$1 found: $(command -v "$1")"
-    return 0
+for cmd in git curl node npm; do
+  if command -v "$cmd" &>/dev/null; then
+    success "$cmd: $(command -v "$cmd")"
   else
-    return 1
-  fi
-}
-
-if ! check_command "curl"; then
-  error "curl is required but not installed."
-  echo "  Install with: sudo apt install curl  (or brew install curl)"
-  exit 1
-fi
-
-if ! check_command "git"; then
-  error "git is required but not installed."
-  echo "  Install with: sudo apt install git  (or brew install git)"
-  exit 1
-fi
-
-# ============================================================================
-# Step 2: Install Bun
-# ============================================================================
-
-step "Checking Bun runtime"
-
-if check_command "bun"; then
-  BUN_VERSION=$(bun --version 2>/dev/null || echo "unknown")
-  info "Bun version: $BUN_VERSION"
-else
-  info "Bun not found. Installing Bun..."
-  curl -fsSL https://bun.sh/install | bash
-
-  # Source bun into current session
-  export BUN_INSTALL="$HOME/.bun"
-  export PATH="$BUN_INSTALL/bin:$PATH"
-
-  if check_command "bun"; then
-    success "Bun installed successfully: $(bun --version)"
-  else
-    error "Failed to install Bun. Please install manually: https://bun.sh"
+    error "$cmd not found. Please install it first."
     exit 1
   fi
-fi
+done
 
-# ============================================================================
-# Step 3: Clone or Update Repository
-# ============================================================================
+NODE_VER=$(node --version)
+info "Node.js $NODE_VER"
 
-step "Setting up project"
+# ── Step 2: Clone or update repo ─────────────────────────────────────────
+step "Setting up repository"
 
 if [ -d "$INSTALL_DIR/.git" ]; then
-  info "Repository exists at $INSTALL_DIR, updating..."
+  info "Found existing repo at $INSTALL_DIR, pulling latest..."
   cd "$INSTALL_DIR"
-  git pull --ff-only || warn "Could not auto-update. Continuing with existing version."
+  git pull --ff-only 2>/dev/null || warn "Pull failed, using existing version"
+elif [ -f "$INSTALL_DIR/package.json" ]; then
+  info "Using existing project at $INSTALL_DIR"
+  cd "$INSTALL_DIR"
 else
-  if [ -d "$INSTALL_DIR" ]; then
-    warn "Directory $INSTALL_DIR exists but is not a git repo."
-    info "Using existing directory..."
-  else
-    info "Cloning repository to $INSTALL_DIR..."
-    git clone "$REPO_URL" "$INSTALL_DIR" || {
-      warn "Could not clone from $REPO_URL"
-      info "If you already have the code, set INSTALL_DIR to point to it."
-      info "Trying current directory instead..."
-      INSTALL_DIR="$(pwd)"
-    }
-  fi
+  info "Cloning to $INSTALL_DIR..."
+  git clone "$REPO_URL" "$INSTALL_DIR" 2>&1 | tail -2
   cd "$INSTALL_DIR"
 fi
+success "Project: $INSTALL_DIR"
 
-success "Project directory: $INSTALL_DIR"
-
-# ============================================================================
-# Step 4: Install Dependencies
-# ============================================================================
-
+# ── Step 3: Install dependencies ─────────────────────────────────────────
 step "Installing dependencies"
 
-if [ -f "package.json" ]; then
-  bun install
-  success "Dependencies installed"
+npm install --no-audit --no-fund 2>&1 | tail -3
+success "Dependencies installed"
+
+# ── Step 4: Build ─────────────────────────────────────────────────────────
+step "Building"
+
+node scripts/build.cjs --skip-typecheck --skip-validate 2>&1 | tail -3
+if [ -f dist/cli.mjs ]; then
+  success "Build complete: dist/cli.mjs"
 else
-  error "package.json not found in $INSTALL_DIR"
+  error "Build failed"
   exit 1
 fi
 
-# ============================================================================
-# Step 5: Build Project
-# ============================================================================
+# ── Step 5: API Key Configuration ─────────────────────────────────────────
+step "Configuring API"
 
-step "Building project"
+# Auto-detect from environment
+DETECTED_PROVIDER=""
+DETECTED_KEY=""
+DETECTED_MODEL=""
 
-bun run build && success "Build completed" || {
-  warn "Build failed. You may need to fix issues and run 'bun run build' manually."
-}
+if [ -n "${MOONSHOT_API_KEY:-}" ]; then
+  DETECTED_PROVIDER="kimi"
+  DETECTED_KEY="$MOONSHOT_API_KEY"
+  DETECTED_MODEL="kimi-k2.5"
+elif [ -n "${KIMI_API_KEY:-}" ]; then
+  DETECTED_PROVIDER="kimi"
+  DETECTED_KEY="$KIMI_API_KEY"
+  DETECTED_MODEL="kimi-k2.5"
+elif [ -n "${ANTHROPIC_API_KEY:-}" ]; then
+  DETECTED_PROVIDER="anthropic"
+  DETECTED_KEY="$ANTHROPIC_API_KEY"
+  DETECTED_MODEL="claude-sonnet-4-20250514"
+elif [ -n "${OPENAI_API_KEY:-}" ]; then
+  DETECTED_PROVIDER="openai"
+  DETECTED_KEY="$OPENAI_API_KEY"
+  DETECTED_MODEL="gpt-4o"
+fi
 
-# ============================================================================
-# Step 6: Interactive API Configuration
-# ============================================================================
+if [ -n "$DETECTED_PROVIDER" ]; then
+  KEY_PREVIEW="${DETECTED_KEY:0:8}...${DETECTED_KEY: -4}"
+  success "Detected: ${DETECTED_PROVIDER} / ${DETECTED_MODEL} (${KEY_PREVIEW})"
 
-step "Configuring API providers"
-
-mkdir -p "$CONFIG_DIR"
-
-echo ""
-echo -e "${BOLD}Which providers would you like to configure?${NC}"
-echo -e "  ${CYAN}1)${NC} Anthropic (Claude)    - ${DIM}ANTHROPIC_API_KEY${NC}"
-echo -e "  ${GREEN}2)${NC} OpenAI (GPT)          - ${DIM}OPENAI_API_KEY${NC}"
-echo -e "  ${MAGENTA}3)${NC} Kimi (Moonshot AI)    - ${DIM}MOONSHOT_API_KEY${NC}"
-echo -e "  ${YELLOW}4)${NC} Skip configuration"
-echo ""
-
-PROVIDER="anthropic"
-MODEL=""
-API_KEY=""
-
-read -p "Select provider [1-4] (default: 1): " PROVIDER_CHOICE
-PROVIDER_CHOICE="${PROVIDER_CHOICE:-1}"
-
-case "$PROVIDER_CHOICE" in
-  1)
-    PROVIDER="anthropic"
-    MODEL="claude-sonnet-4-20250514"
-    echo -e "\n${CYAN}Enter your Anthropic API key:${NC}"
-    read -s -p "API Key: " API_KEY
-    echo ""
-    ;;
-  2)
-    PROVIDER="openai"
-    MODEL="gpt-4o"
-    echo -e "\n${GREEN}Enter your OpenAI API key:${NC}"
-    read -s -p "API Key: " API_KEY
-    echo ""
-    ;;
-  3)
-    PROVIDER="kimi"
-    MODEL="kimi-k2.5"
-    echo -e "\n${MAGENTA}Enter your Moonshot API key:${NC}"
-    read -s -p "API Key: " API_KEY
-    echo ""
-    ;;
-  4)
-    info "Skipping API configuration. You can set it up later."
-    ;;
-  *)
-    warn "Invalid choice. Skipping configuration."
-    ;;
-esac
-
-# Write config file
-if [ -n "$API_KEY" ]; then
-  cat > "$CONFIG_FILE" << EOF
-# Claude Code Clone Configuration
-# Generated by setup script
-
+  # Write config
+  mkdir -p "$CONFIG_DIR"
+  cat > "$CONFIG_FILE" << YAML
 model:
-  provider: ${PROVIDER}
-  name: ${MODEL}
-  apiKey: "${API_KEY}"
+  provider: ${DETECTED_PROVIDER}
+  name: ${DETECTED_MODEL}
+  apiKey: "${DETECTED_KEY}"
   maxTokens: 16000
   temperature: 0
-
-context:
-  maxTokens: 200000
-  compression:
-    enabled: true
-    strategy: auto-compact
-    threshold: 0.8
-    preserveRecent: 10
-
-permissions:
-  default: ask
-  tools:
-    View: auto
-    Read: auto
-    Search: auto
-    Edit: ask
-    Bash: ask
-
 ui:
   theme: default
-  showTimestamps: false
   showTokenCount: true
-  compactMode: false
-  animations: true
-
-features:
-  multi-agent: true
-  context-compression: true
-  mcp-support: true
-  plugin-system: true
-  streaming: true
-EOF
-
+YAML
   chmod 600 "$CONFIG_FILE"
-  success "Configuration saved to $CONFIG_FILE (permissions: 600)"
-
-  # Also set environment variable for current session
-  case "$PROVIDER" in
-    anthropic) export ANTHROPIC_API_KEY="$API_KEY" ;;
-    openai)    export OPENAI_API_KEY="$API_KEY" ;;
-    kimi)      export MOONSHOT_API_KEY="$API_KEY" ;;
-  esac
+  success "Config saved: $CONFIG_FILE"
 else
-  if [ ! -f "$CONFIG_FILE" ]; then
-    cat > "$CONFIG_FILE" << EOF
-# Claude Code Clone Configuration
-# Set your API key below or via environment variable
+  warn "No API key found in environment."
+  echo ""
+  echo -e "  Set one of these before running:"
+  echo -e "    ${MAGENTA}export MOONSHOT_API_KEY=sk-xxx${NC}     # Kimi"
+  echo -e "    ${CYAN}export ANTHROPIC_API_KEY=sk-xxx${NC}    # Claude"
+  echo -e "    ${GREEN}export OPENAI_API_KEY=sk-xxx${NC}       # OpenAI"
+  echo ""
 
+  # Interactive prompt if TTY
+  if [ -t 0 ]; then
+    echo -e "${BOLD}Select provider:${NC}"
+    echo "  1) Kimi (Moonshot AI)"
+    echo "  2) Anthropic (Claude)"
+    echo "  3) OpenAI (GPT)"
+    echo "  4) Skip"
+    read -p "Choice [1-4]: " CHOICE
+    case "$CHOICE" in
+      1) DETECTED_PROVIDER="kimi"; DETECTED_MODEL="kimi-k2.5" ;;
+      2) DETECTED_PROVIDER="anthropic"; DETECTED_MODEL="claude-sonnet-4-20250514" ;;
+      3) DETECTED_PROVIDER="openai"; DETECTED_MODEL="gpt-4o" ;;
+      *) DETECTED_PROVIDER="" ;;
+    esac
+
+    if [ -n "$DETECTED_PROVIDER" ]; then
+      read -s -p "Enter API key: " DETECTED_KEY; echo ""
+      if [ -n "$DETECTED_KEY" ]; then
+        mkdir -p "$CONFIG_DIR"
+        cat > "$CONFIG_FILE" << YAML
 model:
-  provider: anthropic
-  name: claude-sonnet-4-20250514
-  # apiKey: "your-api-key-here"
+  provider: ${DETECTED_PROVIDER}
+  name: ${DETECTED_MODEL}
+  apiKey: "${DETECTED_KEY}"
   maxTokens: 16000
   temperature: 0
+YAML
+        chmod 600 "$CONFIG_FILE"
+        success "Config saved"
 
-ui:
-  theme: default
-  showTokenCount: true
-EOF
-    info "Default config written to $CONFIG_FILE"
+        # Export for immediate use
+        case "$DETECTED_PROVIDER" in
+          kimi)      export MOONSHOT_API_KEY="$DETECTED_KEY" ;;
+          anthropic) export ANTHROPIC_API_KEY="$DETECTED_KEY" ;;
+          openai)    export OPENAI_API_KEY="$DETECTED_KEY" ;;
+        esac
+      fi
+    fi
   fi
 fi
 
-# ============================================================================
-# Step 7: Register Shell Alias
-# ============================================================================
+# ── Step 6: Create launcher script ────────────────────────────────────────
+step "Creating launcher"
 
-step "Setting up shell commands"
+LAUNCHER="$INSTALL_DIR/ccode"
+cat > "$LAUNCHER" << 'SCRIPT'
+#!/usr/bin/env bash
+DIR="$(cd "$(dirname "$0")" && pwd)"
+exec node "$DIR/dist/cli.mjs" "$@"
+SCRIPT
+chmod +x "$LAUNCHER"
 
-# Determine shell config file
+# Add to PATH via shell profile
 SHELL_RC=""
-if [ -n "${ZSH_VERSION:-}" ] || [ -f "$HOME/.zshrc" ]; then
-  SHELL_RC="$HOME/.zshrc"
-elif [ -n "${BASH_VERSION:-}" ] || [ -f "$HOME/.bashrc" ]; then
-  SHELL_RC="$HOME/.bashrc"
-fi
-
-ALIAS_LINE="alias ccode='cd $INSTALL_DIR && bun run start'"
-BIN_EXPORT="export PATH=\"$INSTALL_DIR/dist:\$PATH\""
+[ -f "$HOME/.zshrc" ] && SHELL_RC="$HOME/.zshrc"
+[ -f "$HOME/.bashrc" ] && SHELL_RC="$HOME/.bashrc"
 
 if [ -n "$SHELL_RC" ]; then
-  # Add alias if not already present
-  if ! grep -q "alias ccode=" "$SHELL_RC" 2>/dev/null; then
+  if ! grep -q "claude-code-clone" "$SHELL_RC" 2>/dev/null; then
     echo "" >> "$SHELL_RC"
     echo "# Claude Code Clone" >> "$SHELL_RC"
-    echo "$ALIAS_LINE" >> "$SHELL_RC"
-    success "Added 'ccode' alias to $SHELL_RC"
-  else
-    info "'ccode' alias already exists in $SHELL_RC"
+    echo "export PATH=\"$INSTALL_DIR:\$PATH\"" >> "$SHELL_RC"
+    success "Added to PATH in $SHELL_RC"
   fi
-
-  # Source for current session
-  eval "$ALIAS_LINE" 2>/dev/null || true
-else
-  warn "Could not detect shell config file."
-  echo "  Add this to your shell profile manually:"
-  echo "    $ALIAS_LINE"
 fi
 
-# ============================================================================
-# Step 8: Verify Installation
-# ============================================================================
+# Also add for current session
+export PATH="$INSTALL_DIR:$PATH"
 
-step "Verifying installation"
-
-if [ -f "$INSTALL_DIR/dist/cli.js" ]; then
-  success "Build artifacts found"
-else
-  warn "Build artifacts not found. Run 'bun run build' in $INSTALL_DIR"
-fi
-
-if [ -f "$CONFIG_FILE" ]; then
-  success "Configuration file exists"
-else
-  warn "No configuration file found"
-fi
-
-# ============================================================================
-# Done!
-# ============================================================================
-
+# ── Done ──────────────────────────────────────────────────────────────────
 echo ""
-echo -e "${GREEN}${BOLD}========================================${NC}"
-echo -e "${GREEN}${BOLD}  Setup Complete!${NC}"
-echo -e "${GREEN}${BOLD}========================================${NC}"
+echo -e "${GREEN}${BOLD}╔═══════════════════════════════════════╗${NC}"
+echo -e "${GREEN}${BOLD}║       Setup Complete!                 ║${NC}"
+echo -e "${GREEN}${BOLD}╚═══════════════════════════════════════╝${NC}"
 echo ""
-echo -e "  ${BOLD}Quick Start:${NC}"
-echo -e "    ${CYAN}cd $INSTALL_DIR && bun run start${NC}"
-echo -e "    ${DIM}or use the alias:${NC} ${CYAN}ccode${NC}"
+echo -e "  ${BOLD}Run now:${NC}"
+echo -e "    ${CYAN}cd $INSTALL_DIR && node dist/cli.mjs${NC}"
 echo ""
-echo -e "  ${BOLD}Configuration:${NC}"
-echo -e "    ${DIM}Config file:${NC} $CONFIG_FILE"
-echo -e "    ${DIM}Provider:${NC}    $PROVIDER"
-echo -e "    ${DIM}Model:${NC}       ${MODEL:-default}"
+echo -e "  ${BOLD}Or use the shortcut (after restarting terminal):${NC}"
+echo -e "    ${CYAN}ccode${NC}"
 echo ""
-echo -e "  ${BOLD}Commands:${NC}"
-echo -e "    ccode                     ${DIM}Start interactive session${NC}"
-echo -e "    ccode \"your prompt\"        ${DIM}Run with initial prompt${NC}"
-echo -e "    ccode config --list       ${DIM}View configuration${NC}"
-echo -e "    ccode session --list      ${DIM}List saved sessions${NC}"
-echo ""
-echo -e "  ${BOLD}Keyboard Shortcuts:${NC}"
-echo -e "    Ctrl+P  ${DIM}Switch provider${NC}"
-echo -e "    Ctrl+T  ${DIM}Toggle tool panel${NC}"
-echo -e "    Ctrl+L  ${DIM}Clear screen${NC}"
-echo -e "    Escape  ${DIM}Exit${NC}"
+echo -e "  ${BOLD}Quick commands:${NC}"
+echo -e "    ccode \"your question\"     # Ask something"
+echo -e "    ccode --help              # Show help"
+echo -e "    ccode config --list       # View config"
 echo ""
 
-if [ -n "$SHELL_RC" ] && [ -z "${SOURCED_RC:-}" ]; then
-  echo -e "  ${YELLOW}Run 'source $SHELL_RC' or open a new terminal to use the 'ccode' alias.${NC}"
-  echo ""
+# ── Auto-launch ──────────────────────────────────────────────────────────
+if [ -t 0 ] && [ -n "$DETECTED_KEY" ]; then
+  read -p "Launch now? [Y/n]: " LAUNCH
+  if [ "${LAUNCH:-y}" != "n" ] && [ "${LAUNCH:-y}" != "N" ]; then
+    echo ""
+    exec node "$INSTALL_DIR/dist/cli.mjs"
+  fi
 fi
