@@ -503,8 +503,21 @@ function loadEnvVars(manager: ConfigManager): void {
     manager.set('model.name', process.env.CLAUDE_MODEL);
   }
 
-  // API key: resolve based on current provider setting to avoid collision
-  const provider = (manager.get<string>('model.provider')) || 'anthropic';
+  // Auto-detect provider and API key from environment variables
+  // Detect which provider's API key is present
+  const detectedProvider = (() => {
+    if (process.env.MOONSHOT_API_KEY || process.env.KIMI_API_KEY) return 'kimi';
+    if (process.env.OPENAI_API_KEY) return 'openai';
+    if (process.env.ANTHROPIC_API_KEY || process.env.CLAUDE_API_KEY) return 'anthropic';
+    return '';
+  })();
+
+  // If we detected a provider from env, set it (overrides default 'anthropic')
+  if (detectedProvider) {
+    manager.set('model.provider', detectedProvider);
+  }
+
+  // Set API key from the detected provider's env var
   const apiKeyEnvMap: Record<string, string[]> = {
     anthropic: ['ANTHROPIC_API_KEY', 'CLAUDE_API_KEY'],
     openai: ['OPENAI_API_KEY'],
@@ -512,7 +525,8 @@ function loadEnvVars(manager: ConfigManager): void {
     google: ['GOOGLE_API_KEY'],
   };
 
-  const envVarsForProvider = apiKeyEnvMap[provider] || ['CLAUDE_API_KEY'];
+  const activeProvider = detectedProvider || (manager.get<string>('model.provider')) || 'anthropic';
+  const envVarsForProvider = apiKeyEnvMap[activeProvider] || ['CLAUDE_API_KEY'];
   for (const envVar of envVarsForProvider) {
     const value = process.env[envVar];
     if (value) {

@@ -295,7 +295,7 @@ export class QueryEngine {
       this.streamingHandler = new StreamingHandler({
         callbacks,
         logger: this.logger,
-        provider: this.config.llmConfig.provider as 'anthropic' | 'openai',
+        provider: this.config.llmConfig.provider as any,
         abortSignal: options.abortSignal,
       });
 

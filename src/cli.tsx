@@ -220,35 +220,53 @@ Guidelines:
       : baseSystemPrompt;
 
     // Build LLM config from configuration
-    // Auto-detect provider from environment if not explicitly configured
+    // Priority: CLI flag > config file (non-default) > env var auto-detect > default
     const configuredProvider = config.get('model.provider') as string;
-    const provider = configuredProvider || (() => {
-      if (process.env.ANTHROPIC_API_KEY || process.env.CLAUDE_API_KEY) return 'anthropic';
-      if (process.env.OPENAI_API_KEY) return 'openai';
+
+    // Check if provider was EXPLICITLY set (not just the default 'anthropic')
+    // by checking if user has a config file with provider set, or passed --model flag
+    const isProviderExplicit = options.model || (
+      configuredProvider && configuredProvider !== 'anthropic'
+    );
+
+    // Auto-detect provider from environment variables
+    const detectProviderFromEnv = (): string => {
       if (process.env.MOONSHOT_API_KEY || process.env.KIMI_API_KEY) return 'kimi';
-      return 'anthropic';
-    })();
+      if (process.env.OPENAI_API_KEY) return 'openai';
+      if (process.env.ANTHROPIC_API_KEY || process.env.CLAUDE_API_KEY) return 'anthropic';
+      return '';
+    };
 
-    // Resolve API key based on provider
+    const envProvider = detectProviderFromEnv();
+    const provider = isProviderExplicit
+      ? configuredProvider
+      : (envProvider || configuredProvider || 'anthropic');
+
+    // Resolve API key based on final provider
     const resolveApiKey = (): string => {
-      const configKey = config.get('model.apiKey') as string;
-      if (configKey) return configKey;
+      // CLI flag takes highest priority
+      if (options.apiKey) return options.apiKey as string;
 
+      // Then check provider-specific env vars
       switch (provider) {
         case 'kimi':
           return process.env.MOONSHOT_API_KEY || process.env.KIMI_API_KEY || '';
         case 'openai':
           return process.env.OPENAI_API_KEY || '';
         case 'anthropic':
+          return process.env.ANTHROPIC_API_KEY || process.env.CLAUDE_API_KEY || '';
         default:
           return process.env.ANTHROPIC_API_KEY || process.env.CLAUDE_API_KEY || '';
       }
     };
 
-    // Resolve default model based on provider
+    // Resolve default model based on final provider
     const resolveDefaultModel = (): string => {
+      // If user explicitly set a model via config or CLI, use it
       const configModel = config.get('model.name') as string;
-      if (configModel) return configModel;
+      if (options.model) return options.model as string;
+      // Only use config model if provider matches (avoid claude model with kimi provider)
+      if (configModel && configModel !== 'claude-3-5-sonnet-20241022') return configModel;
 
       switch (provider) {
         case 'kimi':
@@ -268,6 +286,12 @@ Guidelines:
       maxTokens: (config.get('model.maxTokens') as number) || 16000,
       temperature: (config.get('model.temperature') as number) || 0,
     };
+
+    // Show provider info on startup
+    const keyPreview = llmConfig.apiKey
+      ? llmConfig.apiKey.slice(0, 8) + '...' + llmConfig.apiKey.slice(-4)
+      : '(not set)';
+    console.log(`\n  Provider: ${llmConfig.provider} | Model: ${llmConfig.model} | Key: ${keyPreview}\n`);
 
     // Warn if no API key configured
     if (!llmConfig.apiKey) {
