@@ -220,7 +220,14 @@ Guidelines:
       : baseSystemPrompt;
 
     // Build LLM config from configuration
-    const provider = (config.get('model.provider') as string) || 'anthropic';
+    // Auto-detect provider from environment if not explicitly configured
+    const configuredProvider = config.get('model.provider') as string;
+    const provider = configuredProvider || (() => {
+      if (process.env.ANTHROPIC_API_KEY || process.env.CLAUDE_API_KEY) return 'anthropic';
+      if (process.env.OPENAI_API_KEY) return 'openai';
+      if (process.env.MOONSHOT_API_KEY || process.env.KIMI_API_KEY) return 'kimi';
+      return 'anthropic';
+    })();
 
     // Resolve API key based on provider
     const resolveApiKey = (): string => {
@@ -261,6 +268,18 @@ Guidelines:
       maxTokens: (config.get('model.maxTokens') as number) || 16000,
       temperature: (config.get('model.temperature') as number) || 0,
     };
+
+    // Warn if no API key configured
+    if (!llmConfig.apiKey) {
+      const envHint: Record<string, string> = {
+        anthropic: 'ANTHROPIC_API_KEY',
+        openai: 'OPENAI_API_KEY',
+        kimi: 'MOONSHOT_API_KEY',
+      };
+      const hint = envHint[provider] || 'API_KEY';
+      logger.warn(`No API key configured for provider "${provider}". Set ${hint} environment variable or run: node dist/cli.mjs config`);
+      console.log(`\n  Warning: No API key for ${provider}. Set ${hint} or use --api-key flag.\n`);
+    }
 
     // Create tools
     const tools = createDefaultTools(workingDirectory);
@@ -363,12 +382,12 @@ Guidelines:
 
 function createLogger(debug: boolean): Logger {
   const logDir = join(homedir(), '.claude-code', 'logs');
-  
+
   return new Logger({
     name: 'claude-code',
     level: debug ? 'debug' : 'info',
     logFile: join(logDir, 'claude-code.log'),
-    console: true,
+    console: debug,  // Only log to console in debug mode, keep UI clean
     structured: false,
   });
 }

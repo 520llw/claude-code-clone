@@ -1037,6 +1037,39 @@ export class QueryEngine {
    * @returns JSON schema
    */
   private buildToolSchema(tool: ToolDefinition): Record<string, unknown> {
+    // If tool has a Zod inputSchema, convert it to JSON Schema
+    if (tool.inputSchema && typeof (tool.inputSchema as any).shape === 'object') {
+      try {
+        const shape = (tool.inputSchema as any).shape;
+        const properties: Record<string, unknown> = {};
+        const required: string[] = [];
+
+        for (const [key, schema] of Object.entries(shape)) {
+          const s = schema as any;
+          properties[key] = {
+            type: s._def?.typeName === 'ZodNumber' ? 'number'
+              : s._def?.typeName === 'ZodBoolean' ? 'boolean'
+              : 'string',
+            description: s._def?.description || s.description || key,
+          };
+          // Check if not optional
+          if (s._def?.typeName !== 'ZodOptional') {
+            required.push(key);
+          }
+        }
+
+        return { type: 'object', properties, required };
+      } catch {
+        // Fallback to empty schema
+        return { type: 'object', properties: {}, required: [] };
+      }
+    }
+
+    // Legacy format: tool.parameters is an array of {name, type, description}
+    if (!tool.parameters || !Array.isArray(tool.parameters)) {
+      return { type: 'object', properties: {}, required: [] };
+    }
+
     const properties: Record<string, unknown> = {};
     const required: string[] = [];
 
@@ -1048,7 +1081,7 @@ export class QueryEngine {
 
       if (param.enum) {
         properties[param.name] = {
-          ...properties[param.name],
+          ...properties[param.name] as object,
           enum: param.enum,
         };
       }
@@ -1143,7 +1176,11 @@ export class QueryEngine {
     data: Record<string, unknown>,
     startTime: number
   ): QueryResponse {
-    const choice = (data.choices as Array<Record<string, unknown>>)[0];
+    const choices = data.choices as Array<Record<string, unknown>> | undefined;
+    if (!choices || choices.length === 0) {
+      throw new LLMError('Empty response from API (no choices)', undefined, 'openai', false);
+    }
+    const choice = choices[0]!;
     const message_data = choice.message as Record<string, unknown>;
     const usage = data.usage as Record<string, number>;
 
@@ -1153,22 +1190,29 @@ export class QueryEngine {
     // Check for tool calls
     if (message_data.tool_calls) {
       const toolCall = (message_data.tool_calls as Array<Record<string, unknown>>)[0];
-      const function_data = toolCall.function as Record<string, unknown>;
+      const function_data = toolCall!.function as Record<string, unknown>;
+
+      let parsedArgs: Record<string, unknown> = {};
+      try {
+        parsedArgs = JSON.parse(function_data.arguments as string);
+      } catch {
+        parsedArgs = { raw: function_data.arguments };
+      }
 
       message = {
         id: `msg_${Date.now()}`,
         type: 'tool_use',
         role: 'assistant',
         toolName: function_data.name as string,
-        toolInput: JSON.parse(function_data.arguments as string),
-        toolUseId: toolCall.id as string,
+        toolInput: parsedArgs,
+        toolUseId: toolCall!.id as string,
         timestamp: new Date(),
       };
 
       toolCalls.push({
-        id: toolCall.id as string,
+        id: toolCall!.id as string,
         toolName: function_data.name as string,
-        parameters: JSON.parse(function_data.arguments as string),
+        parameters: parsedArgs,
         timestamp: new Date(),
       });
     } else {

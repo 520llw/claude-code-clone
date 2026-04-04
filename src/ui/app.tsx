@@ -334,7 +334,29 @@ export function App({ initialPrompt, workingDirectory, config, logger, agent }: 
               endTime: Date.now(),
             })));
 
-            setStatus(result?.success !== false ? 'Ready' : 'Error');
+            // Show error if the agent failed (e.g. API auth error)
+            if (result?.success === false && result?.error) {
+              const errMsg = result.error.message || 'Unknown error occurred';
+              if (!accumulatedText) {
+                addMessage(makeMsg('assistant', `Error: ${errMsg}`));
+              }
+              setStatus('Error');
+            } else {
+              // If streaming callbacks didn't fire (no accumulatedText), extract from result
+              if (!accumulatedText && result?.messages) {
+                for (const msg of result.messages) {
+                  if (msg && typeof msg === 'object' && 'role' in msg && msg.role === 'assistant') {
+                    const content = 'content' in msg && typeof msg.content === 'string' ? msg.content : '';
+                    if (content) addMessage(makeMsg('assistant', content));
+                  }
+                }
+              }
+              setStatus('Ready');
+            }
+
+            if (result?.totalTokenUsage) {
+              setTokenCount(prev => prev + (result.totalTokenUsage.totalTokens || 0));
+            }
           } catch (streamError) {
             // Fallback: if streaming fails, show whatever we accumulated
             if (accumulatedText) {
@@ -384,7 +406,13 @@ export function App({ initialPrompt, workingDirectory, config, logger, agent }: 
             setTokenCount(prev => prev + (result.totalTokenUsage.totalTokens || 0));
           }
 
-          setStatus(result?.success ? 'Ready' : 'Error');
+          // Show error from non-streaming path
+          if (result?.success === false && result?.error) {
+            addMessage(makeMsg('assistant', `Error: ${result.error.message || 'Request failed'}`));
+            setStatus('Error');
+          } else {
+            setStatus('Ready');
+          }
         }
 
       } else {

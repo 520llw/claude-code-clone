@@ -618,7 +618,18 @@ export class AgentLoop {
    * @returns Query options
    */
   private buildQueryOptions(): QueryOptions {
-    const toolDefinitions = Array.from(this.tools.values()).map(t => t.definition);
+    // Build tool definitions from registered tools
+    // Tools may have .definition (ITool) or direct properties (Tool base class)
+    const toolDefinitions = Array.from(this.tools.values()).map(t => {
+      if ((t as any).definition) return (t as any).definition;
+      // Fallback: construct definition from direct properties
+      return {
+        name: (t as any).name || 'unknown',
+        description: (t as any).description || '',
+        parameters: (t as any).inputSchema ? [] : ((t as any).parameters || []),
+        inputSchema: (t as any).inputSchema,
+      };
+    }).filter(Boolean);
 
     return {
       messages: this.contextManager.getMessages(),

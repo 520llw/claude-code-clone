@@ -132,7 +132,7 @@ export function WelcomeScreen({
           <Text>  <Text color="cyan" bold>Ctrl+P</Text>      Switch provider</Text>
           <Text>  <Text color="cyan" bold>Ctrl+T</Text>      Toggle tool panel</Text>
           <Text>  <Text color="cyan" bold>Ctrl+L</Text>      Clear screen</Text>
-          <Text>  <Text color="cyan" bold>Escape</Text>      Exit</Text>
+          <Text>  <Text color="cyan" bold>Ctrl+Q</Text>      Exit</Text>
         </Box>
       </Box>
 
