@@ -498,16 +498,16 @@ export class AgentPool extends EventEmitter {
       once: () => {},
       emit: () => {},
       removeAllListeners: () => {},
+    };
 
-      // 模拟执行
-      simulateExecution: async (task: Task): Promise<void> {
-        const duration = Math.random() * 5000 + 1000;
-        await new Promise(resolve => setTimeout(resolve, duration));
-        
-        if (Math.random() < 0.05) { // 5% 失败率
-          throw new Error('Simulated execution error');
-        }
-      },
+    // 模拟执行方法（内部使用）
+    const simulateExecution = async (task: Task): Promise<void> => {
+      const duration = Math.random() * 5000 + 1000;
+      await new Promise(resolve => setTimeout(resolve, duration));
+      
+      if (Math.random() < 0.05) { // 5% 失败率
+        throw new Error('Simulated execution error');
+      }
     };
 
     await agent.initialize(config);
